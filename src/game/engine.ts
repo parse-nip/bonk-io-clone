@@ -10,11 +10,11 @@ import { getMap } from "./maps";
 
 const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
-const HEAVY_MASS = 2.35;
-const MOVE_FORCE = 0.00165;
-const HEAVY_MOVE_FORCE = 0.00055;
-const JUMP_FORCE = 0.045;
-const AIR_CONTROL = 0.55;
+const HEAVY_MASS = 2.4;
+const MOVE_FORCE = 0.00185;
+const HEAVY_MOVE_FORCE = 0.00062;
+const JUMP_FORCE = 0.042;
+const AIR_CONTROL = 0.5;
 
 export interface EnginePlayer {
   id: string;
@@ -128,8 +128,9 @@ export class BonkEngine {
           length: 0,
         });
         Matter.World.add(this.world, this.pivotConstraint);
-        // soft angular damping via high inertia feel
-        Matter.Body.setInertia(body, body.inertia * 2.2);
+        // soft angular damping via high inertia + air friction (Classic tilt feel)
+        Matter.Body.setInertia(body, body.inertia * 3.4);
+        body.frictionAir = 0.05;
       }
 
       this.platforms.push(body);
@@ -299,11 +300,13 @@ export class BonkEngine {
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
+        if (!p.aiming) {
+          p.aimAngle = p.facing >= 0 ? 0 : Math.PI;
+        }
         p.aiming = true;
         p.charge = Math.min(1, p.charge + dt * 0.9);
         if (input.left) p.aimAngle -= dt * 2.8;
         if (input.right) p.aimAngle += dt * 2.8;
-        // vertical still allowed lightly
         if (input.up && grounded) this.tryJump(p);
       } else {
         if (p.aiming && p.charge > 0.08) {
@@ -438,10 +441,20 @@ export class BonkEngine {
   }
 
   private isGrounded(p: EnginePlayer): boolean {
-    const start = p.body.position;
-    const end = { x: start.x, y: start.y + PLAYER_RADIUS + 6 };
-    const hits = Matter.Query.ray(this.platforms, start, end);
-    return hits.length > 0 || Math.abs(p.body.velocity.y) < 0.35;
+    for (const plat of this.platforms) {
+      const coll = Matter.Collision.collides(p.body, plat);
+      if (!coll) continue;
+      // contact normal pointing somewhat upward relative to player
+      const ny = coll.normal.y;
+      if (ny < -0.35 || (Math.abs(ny) < 0.2 && p.body.velocity.y >= -0.2)) {
+        return true;
+      }
+      // fallback: player center above platform center and overlapping
+      if (p.body.position.y < plat.position.y && Math.abs(p.body.velocity.y) < 2.5) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private attachGrapple(p: EnginePlayer) {
@@ -483,14 +496,10 @@ export class BonkEngine {
 
   private fireArrow(p: EnginePlayer) {
     const power = 8 + p.charge * 14;
-    const angle = p.aimAngle;
-    const vx = Math.cos(angle) * power * (p.facing >= 0 ? 1 : 1);
-    // aimAngle is absolute; initialize facing-based if ~0
-    const dir =
-      Math.abs(p.aimAngle) < 0.001
-        ? { x: p.facing, y: -0.15 }
-        : { x: Math.cos(p.aimAngle), y: Math.sin(p.aimAngle) };
-    const speed = power;
+    const dir = {
+      x: Math.cos(p.aimAngle),
+      y: Math.sin(p.aimAngle),
+    };
     const body = Matter.Bodies.rectangle(
       p.body.position.x + dir.x * 28,
       p.body.position.y + dir.y * 28,
@@ -504,7 +513,7 @@ export class BonkEngine {
         angle: Math.atan2(dir.y, dir.x),
       },
     );
-    Matter.Body.setVelocity(body, { x: dir.x * speed, y: dir.y * speed });
+    Matter.Body.setVelocity(body, { x: dir.x * power, y: dir.y * power });
     Matter.World.add(this.world, body);
     this.arrows.push({
       body,
@@ -512,7 +521,6 @@ export class BonkEngine {
       lethal: this.mode === "deatharrows",
       life: 3.5,
     });
-    void vx;
   }
 
   private updateArrows(dt: number) {

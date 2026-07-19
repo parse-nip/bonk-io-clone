@@ -73,6 +73,7 @@ let bannerTimer = 0;
 let menuBgEngine: BonkEngine | null = null;
 let menuBgRenderer: GameRenderer | null = null;
 let chatLines: string[] = [];
+let gameEscHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);
@@ -883,14 +884,13 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
     setScreen("lobby");
   });
 
-  const onKey = (e: KeyboardEvent) => {
+  gameEscHandler = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       stopGameLoop(true);
       setScreen("lobby");
     }
   };
-  window.addEventListener("keydown", onKey);
-  (stage as HTMLElement & { _esc?: (e: KeyboardEvent) => void })._esc = onKey;
+  window.addEventListener("keydown", gameEscHandler);
 
   engine.startRound();
   refreshScore();
@@ -929,6 +929,10 @@ function stopGameLoop(destroyEngine: boolean) {
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
   input.unbind();
+  if (gameEscHandler) {
+    window.removeEventListener("keydown", gameEscHandler);
+    gameEscHandler = null;
+  }
   if (destroyEngine && engine) {
     engine.destroy();
     engine = null;
