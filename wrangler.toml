@@ -1,0 +1,37 @@
+name = "bonk"
+main = "worker/index.ts"
+compatibility_date = "2026-07-20"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# Ensure API + WebSocket hit the Worker before static-asset lookup.
+run_worker_first = ["/api/*", "/ws"]
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "GameRoom"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDirectory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom", "LobbyDirectory"]
+
+[observability]
+enabled = true
+
+# Custom domain bonk.popped.dev:
+# After `npm run deploy` on an account that owns the popped.dev zone, either:
+#   1) Dashboard → Workers → bonk → Domains → Add → bonk.popped.dev
+#   2) Uncomment below and redeploy:
+#
+# [[routes]]
+# pattern = "bonk.popped.dev"
+# custom_domain = true

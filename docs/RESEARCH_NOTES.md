@@ -68,10 +68,10 @@ Built-in maps to ship:
 6. Football Pitch — goals + ball (Football mode)
 
 ## Multiplayer approach for this clone
-True bonk.io is server-authoritative WebSocket rooms. For this repo:
-- Local host simulation with AI bots (Quick Play)
-- Optional 2nd local player (WASD)
-- Custom Game lobby UI with bot fill + host controls
+True bonk.io is server-authoritative WebSocket rooms. This repo now supports both:
+- Local host simulation with AI bots (Quick Play) + optional 2nd local player (WASD)
+- **Online:** Cloudflare Durable Object rooms, host-authoritative Matter.js, input bitfields + snapshot interpolation (see `docs/MULTIPLAYER_RESEARCH.md`)
+- Custom Game / Online lobby UI with host controls
 - Same round/score flow as real game
 
 ## Design decisions for the clone

@@ -6,6 +6,7 @@ import type {
   PlayerProfile,
   Skin,
 } from "../types";
+import type { GameSnapshot } from "../../shared/protocol";
 import { getMap } from "./maps";
 
 const PLAYER_RADIUS = 18;
@@ -90,6 +91,16 @@ export class BonkEngine {
   }
 
   private emit(e: EngineEvent) {
+    if (e.type === "match_over") {
+      this.snapEvent = "match_over";
+      this.snapEventPlayerId = e.winnerId;
+    } else if (e.type === "round_over") {
+      this.snapEvent = "round_over";
+      this.snapEventPlayerId = e.winnerId ?? undefined;
+    } else if (e.type === "eliminated") {
+      this.snapEvent = "eliminated";
+      this.snapEventPlayerId = e.id;
+    }
     for (const fn of this.listeners) fn(e);
   }
 
@@ -704,6 +715,144 @@ export class BonkEngine {
         this.emit({ type: "round_over", winnerId: null });
         setTimeout(() => this.startRound(), 1800);
       }
+    }
+  }
+
+  private snapEvent: GameSnapshot["event"];
+  private snapEventPlayerId?: string;
+
+  /** Host: pack authoritative world state for clients. */
+  getSnapshot(banner?: string): GameSnapshot {
+    const event = this.snapEvent;
+    const eventPlayerId = this.snapEventPlayerId;
+    this.snapEvent = undefined;
+    this.snapEventPlayerId = undefined;
+    return {
+      t: performance.now(),
+      countdown: this.countdown,
+      roundActive: this.roundActive,
+      players: this.players.map((p) => ({
+        id: p.id,
+        x: p.body.position.x,
+        y: p.body.position.y,
+        vx: p.body.velocity.x,
+        vy: p.body.velocity.y,
+        angle: p.body.angle,
+        av: p.body.angularVelocity,
+        alive: p.alive,
+        wins: p.wins,
+        facing: p.facing,
+        aiming: p.aiming,
+        aimAngle: p.aimAngle,
+        charge: p.charge,
+        heavy: p.input.heavy,
+        grapple: p.grapplePoint ? { ...p.grapplePoint } : null,
+      })),
+      platforms: this.platforms.map((body, i) => ({
+        i,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        av: body.angularVelocity,
+      })),
+      ball: this.ball
+        ? {
+            x: this.ball.position.x,
+            y: this.ball.position.y,
+            vx: this.ball.velocity.x,
+            vy: this.ball.velocity.y,
+          }
+        : null,
+      banner,
+      event,
+      eventPlayerId,
+    };
+  }
+
+  /**
+   * Client: apply an authoritative (or interpolated) snapshot for rendering.
+   * Does not run physics — bodies are teleported / velocity-matched.
+   */
+  applySnapshot(snap: GameSnapshot) {
+    this.countdown = snap.countdown;
+    this.roundActive = snap.roundActive;
+
+    for (const sp of snap.players) {
+      const p = this.players.find((x) => x.id === sp.id);
+      if (!p) continue;
+      p.wins = sp.wins;
+      p.facing = sp.facing;
+      p.aiming = sp.aiming;
+      p.aimAngle = sp.aimAngle;
+      p.charge = sp.charge;
+      p.input.heavy = sp.heavy;
+
+      if (sp.alive && !p.alive) {
+        p.alive = true;
+        if (!this.world.bodies.includes(p.body)) {
+          Matter.World.add(this.world, p.body);
+        }
+        if (p.body.isStatic) Matter.Body.setStatic(p.body, false);
+      }
+
+      if (!sp.alive && p.alive) {
+        p.alive = false;
+        this.releaseGrapple(p);
+        if (this.world.bodies.includes(p.body)) {
+          Matter.World.remove(this.world, p.body);
+        }
+        continue;
+      }
+
+      if (!sp.alive) continue;
+
+      // During countdown freeze, keep static so visuals match host freeze.
+      if (snap.countdown > 0) {
+        if (!p.body.isStatic) Matter.Body.setStatic(p.body, true);
+      } else if (p.body.isStatic) {
+        Matter.Body.setStatic(p.body, false);
+      }
+
+      Matter.Body.setPosition(p.body, { x: sp.x, y: sp.y });
+      Matter.Body.setVelocity(p.body, { x: sp.vx, y: sp.vy });
+      Matter.Body.setAngle(p.body, sp.angle);
+      Matter.Body.setAngularVelocity(p.body, sp.av);
+      Matter.Body.setMass(p.body, sp.heavy ? HEAVY_MASS : BASE_MASS);
+
+      if (sp.grapple) {
+        if (
+          !p.grapplePoint ||
+          p.grapplePoint.x !== sp.grapple.x ||
+          p.grapplePoint.y !== sp.grapple.y
+        ) {
+          this.releaseGrapple(p);
+          p.grapplePoint = { ...sp.grapple };
+          p.grapple = Matter.Constraint.create({
+            pointA: p.grapplePoint,
+            bodyB: p.body,
+            stiffness: 0.04,
+            damping: 0.05,
+            length: Math.hypot(sp.x - sp.grapple.x, sp.y - sp.grapple.y),
+          });
+          Matter.World.add(this.world, p.grapple);
+        }
+      } else {
+        this.releaseGrapple(p);
+      }
+    }
+
+    for (const sp of snap.platforms) {
+      const body = this.platforms[sp.i];
+      if (!body || body.isStatic) continue;
+      Matter.Body.setPosition(body, { x: sp.x, y: sp.y });
+      Matter.Body.setAngle(body, sp.angle);
+      Matter.Body.setAngularVelocity(body, sp.av);
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    }
+
+    if (this.ball && snap.ball) {
+      Matter.Body.setPosition(this.ball, { x: snap.ball.x, y: snap.ball.y });
+      Matter.Body.setVelocity(this.ball, { x: snap.ball.vx, y: snap.ball.vy });
     }
   }
 

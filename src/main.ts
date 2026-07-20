@@ -14,6 +14,10 @@ import { BonkEngine } from "./game/engine";
 import { GameRenderer } from "./game/renderer";
 import { InputManager } from "./game/input";
 import { botThink } from "./game/ai";
+import { fetchRoomList, NetClient } from "./net/client";
+import { SnapshotBuffer } from "./net/interpolate";
+import { unpackInput } from "../shared/protocol";
+import type { RoomSummary, ServerMessage } from "../shared/protocol";
 
 const BOT_NAMES = [
   "bonkBot",
@@ -32,6 +36,10 @@ interface AppState {
   room: RoomConfig;
   lobbyPlayers: PlayerProfile[];
   localTwoPlayer: boolean;
+  /** True when connected to a Cloudflare Durable Object room. */
+  online: boolean;
+  isHost: boolean;
+  roomCode: string | null;
   settings: { mute: boolean; showNames: boolean };
 }
 
@@ -60,6 +68,9 @@ const state: AppState = {
   },
   lobbyPlayers: [],
   localTwoPlayer: false,
+  online: false,
+  isHost: false,
+  roomCode: null,
   settings: { mute: false, showNames: true },
 };
 
@@ -74,6 +85,12 @@ let menuBgEngine: BonkEngine | null = null;
 let menuBgRenderer: GameRenderer | null = null;
 let chatLines: string[] = [];
 let gameEscHandler: ((e: KeyboardEvent) => void) | null = null;
+let net = new NetClient();
+let unsubNet: (() => void) | null = null;
+let snapBuffer = new SnapshotBuffer();
+let lastBannerFromSnap = "";
+let snapSendAcc = 0;
+let pendingClientMatchOver: string | null = null;
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);
@@ -138,7 +155,7 @@ function render() {
 function makeTopbar() {
   const bar = el("div", "topbar");
   bar.innerHTML = `
-    <div class="brand">bonk.io</div>
+    <div class="brand">bonk</div>
     <div class="meta">
       <span>${escapeHtml(state.profile.name)}${state.profile.guest ? " (guest)" : ""}</span>
       <span title="Friends">Friends</span>
@@ -186,7 +203,7 @@ function makeMenu() {
   const col = el("div", "menu-column");
   const buttons = [
     ["Quick Play", () => setScreen("quickplay")],
-    ["Custom Game", () => setScreen("rooms")],
+    ["Online Multiplayer", () => setScreen("rooms")],
     ["Skin", () => setScreen("skin")],
     ["Map Editor", () => setScreen("editor")],
     ["Settings", () => setScreen("settings")],
@@ -200,7 +217,7 @@ function makeMenu() {
   frag.appendChild(col);
 
   const foot = el("div", "brand-foot");
-  foot.innerHTML = `<div class="presents">Clone presents</div><div class="logo">bonk.io</div>`;
+  foot.innerHTML = `<div class="presents">popped.dev presents</div><div class="logo">bonk</div>`;
   frag.appendChild(foot);
 
   const left = el("div", "corner-actions left");
@@ -287,69 +304,258 @@ function makeQuickPlay() {
 
 function makeRooms() {
   const wrap = el("div", "center-panel panel");
-  wrap.style.width = "min(620px, 95%)";
-  const fakeRooms = [
-    { name: "noobs welcome", mode: "classic", players: "4/8", map: "Classic" },
-    { name: "ARROW ONLY", mode: "arrows", players: "3/6", map: "Arrow Lane" },
-    { name: "grapple tryhards", mode: "grapple", players: "5/8", map: "Orbit" },
-    { name: "football 2v2", mode: "football", players: "2/4", map: "Supercar Pitch" },
-  ];
+  wrap.style.width = "min(640px, 95%)";
   wrap.innerHTML = `
-    <h2>Custom Game</h2>
-    <div class="room-list" id="list"></div>
+    <h2>Online Multiplayer</h2>
+    <p style="text-align:center;color:var(--muted);font-size:12px;margin:-6px 0 12px;line-height:1.4">
+      Real-time rooms on Cloudflare Durable Objects · host-authoritative physics
+    </p>
+    <div class="field">
+      <label>Join by room code</label>
+      <div class="row" style="margin:0">
+        <input id="code" maxlength="8" placeholder="e.g. AB3K9" style="flex:1;text-transform:uppercase" />
+        <button class="btn-brown" id="join-code">Join</button>
+      </div>
+    </div>
+    <div class="room-list" id="list"><div style="padding:10px;color:var(--muted);font-size:13px">Loading rooms…</div></div>
     <div style="margin-top:12px" class="row">
       <button class="btn-brown" id="back">Back</button>
+      <button class="btn-brown" id="refresh">Refresh</button>
       <button class="btn-brown" id="create">Create Room</button>
+      <button class="btn-brown small" id="offline">Local only</button>
     </div>
+    <p id="net-status" style="text-align:center;color:var(--muted);font-size:11px;margin-top:10px"></p>
   `;
-  queueMicrotask(() => {
-    const list = wrap.querySelector("#list")!;
-    for (const r of fakeRooms) {
+
+  const status = () => wrap.querySelector("#net-status") as HTMLElement;
+  const listEl = () => wrap.querySelector("#list")!;
+
+  const paintRooms = (rooms: RoomSummary[]) => {
+    const list = listEl();
+    list.innerHTML = "";
+    const open = rooms.filter((r) => !r.inGame);
+    if (!open.length) {
+      list.innerHTML = `<div style="padding:10px;color:var(--muted);font-size:13px">No open rooms — create one and share the code.</div>`;
+      return;
+    }
+    for (const r of open) {
       const row = el("div", "room-row");
       row.innerHTML = `
-        <strong>${r.name}</strong>
-        <span>${r.mode}</span>
-        <span>${r.players}</span>
+        <strong>${escapeHtml(r.name)}</strong>
+        <span>${escapeHtml(r.mode)}</span>
+        <span>${r.players}/${r.maxPlayers}</span>
+        <span style="font-family:monospace">${escapeHtml(r.code)}</span>
       `;
       const join = el("button", "btn-brown small") as HTMLButtonElement;
       join.textContent = "Join";
-      join.addEventListener("click", () => {
-        state.room.mode = r.mode as GameMode;
-        state.room.name = r.name;
-        state.room.mapId =
-          MAPS.find((m) => m.name === r.map)?.id ??
-          mapsForMode(r.mode)[0]?.id ??
-          "classic";
-        state.room.bots = Math.max(1, parseInt(r.players, 10) - 1);
-        buildLobbyFromQuickPlay();
-        setScreen("lobby");
-      });
+      join.addEventListener("click", () => void joinOnlineRoom(r.code, status()));
       row.appendChild(join);
       list.appendChild(row);
     }
+  };
+
+  const refresh = async () => {
+    status().textContent = "Fetching /api/rooms…";
+    const rooms = await fetchRoomList();
+    paintRooms(rooms);
+    status().textContent = rooms.length
+      ? `${rooms.length} room(s) listed`
+      : "Lobby empty (is wrangler / deploy running?)";
+  };
+
+  queueMicrotask(() => {
+    void refresh();
+    wrap.querySelector("#refresh")!.addEventListener("click", () => void refresh());
     wrap.querySelector("#back")!.addEventListener("click", () => setScreen("menu"));
-    wrap.querySelector("#create")!.addEventListener("click", () => {
+    wrap.querySelector("#offline")!.addEventListener("click", () => {
+      disconnectOnline();
       state.room.name = `${state.profile.name}'s game`;
+      state.room.bots = 3;
       buildLobbyFromQuickPlay();
       setScreen("lobby");
+    });
+    wrap.querySelector("#create")!.addEventListener("click", () => {
+      void createOnlineRoom(status());
+    });
+    wrap.querySelector("#join-code")!.addEventListener("click", () => {
+      const code = (wrap.querySelector("#code") as HTMLInputElement).value;
+      void joinOnlineRoom(code, status());
+    });
+    wrap.querySelector("#code")!.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter") {
+        const code = (wrap.querySelector("#code") as HTMLInputElement).value;
+        void joinOnlineRoom(code, status());
+      }
     });
   });
   return wrap;
 }
 
+async function createOnlineRoom(statusEl?: HTMLElement) {
+  try {
+    statusEl && (statusEl.textContent = "Creating room…");
+    bindNetHandlers();
+    state.room.name = `${state.profile.name}'s game`;
+    state.room.bots = 0;
+    await net.create(state.profile.name, state.profile.guest, state.profile.skin, {
+      name: state.room.name,
+      mode: state.room.mode,
+      mapId: state.room.mapId,
+      roundsToWin: state.room.roundsToWin,
+      maxPlayers: state.room.maxPlayers,
+      teams: state.room.teams,
+      bots: 0,
+    });
+    state.online = true;
+    state.isHost = net.isHost;
+    state.roomCode = net.code;
+    state.localTwoPlayer = false;
+    if (net.playerId) state.profile.id = net.playerId;
+    setScreen("lobby");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to create room";
+    statusEl && (statusEl.textContent = msg);
+    disconnectOnline();
+  }
+}
+
+async function joinOnlineRoom(code: string, statusEl?: HTMLElement) {
+  if (!code.trim()) {
+    statusEl && (statusEl.textContent = "Enter a room code");
+    return;
+  }
+  try {
+    statusEl && (statusEl.textContent = `Joining ${code.toUpperCase()}…`);
+    bindNetHandlers();
+    await net.join(code, state.profile.name, state.profile.guest, state.profile.skin);
+    state.online = true;
+    state.isHost = net.isHost;
+    state.roomCode = net.code;
+    state.localTwoPlayer = false;
+    state.room.bots = 0;
+    if (net.playerId) state.profile.id = net.playerId;
+    setScreen("lobby");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to join";
+    statusEl && (statusEl.textContent = msg);
+    disconnectOnline();
+  }
+}
+
+function bindNetHandlers() {
+  unsubNet?.();
+  unsubNet = net.on(handleServerMessage);
+}
+
+function disconnectOnline() {
+  unsubNet?.();
+  unsubNet = null;
+  net.disconnect();
+  state.online = false;
+  state.isHost = false;
+  state.roomCode = null;
+  snapBuffer.clear();
+}
+
+function handleServerMessage(msg: ServerMessage) {
+  switch (msg.type) {
+    case "welcome":
+      state.profile.id = msg.playerId;
+      state.roomCode = msg.code;
+      state.isHost = msg.isHost;
+      break;
+    case "lobby":
+      state.room = {
+        name: msg.room.name,
+        mode: msg.room.mode,
+        mapId: msg.room.mapId,
+        roundsToWin: msg.room.roundsToWin,
+        maxPlayers: msg.room.maxPlayers,
+        teams: msg.room.teams,
+        bots: 0,
+      };
+      state.isHost = msg.hostId === state.profile.id;
+      state.lobbyPlayers = msg.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        guest: p.guest,
+        skin: p.skin,
+        wins: p.wins,
+        team: p.team as PlayerProfile["team"],
+        ready: p.ready,
+        isBot: p.isBot,
+      }));
+      if (state.screen === "lobby") render();
+      break;
+    case "started":
+      state.room = {
+        name: msg.room.name,
+        mode: msg.room.mode,
+        mapId: msg.room.mapId,
+        roundsToWin: msg.room.roundsToWin,
+        maxPlayers: msg.room.maxPlayers,
+        teams: msg.room.teams,
+        bots: 0,
+      };
+      state.lobbyPlayers = msg.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        guest: p.guest,
+        skin: p.skin,
+        wins: p.wins,
+        team: p.team as PlayerProfile["team"],
+        ready: p.ready,
+        isBot: p.isBot,
+      }));
+      snapBuffer.clear();
+      lastBannerFromSnap = "";
+      pendingClientMatchOver = null;
+      chatLines = [`Online match — code ${state.roomCode ?? "????"}`];
+      setScreen("game");
+      break;
+    case "snapshot":
+      snapBuffer.push(msg.snap);
+      if (msg.snap.event === "match_over") {
+        pendingClientMatchOver = msg.snap.eventPlayerId ?? "";
+      }
+      break;
+    case "chat":
+      chatLines.push(`${msg.from}: ${msg.text}`);
+      break;
+    case "host_changed":
+      state.isHost = msg.hostId === state.profile.id;
+      chatLines.push(state.isHost ? "You are the new host." : "Host changed.");
+      if (state.screen === "lobby") render();
+      break;
+    case "peer_left":
+      chatLines.push(`Player left (${msg.playerId.slice(0, 4)}…)`);
+      break;
+    case "error":
+      chatLines.push(`Error: ${msg.message}`);
+      if (state.screen === "rooms" || state.screen === "lobby") {
+        // surface later via lobby status if needed
+      }
+      break;
+  }
+}
+
 function makeLobby() {
   const wrap = el("div", "lobby-layout");
   const left = el("div", "panel");
-  left.innerHTML = `<h3 style="margin-bottom:8px;color:var(--cream)">${escapeHtml(state.room.name)}</h3>`;
+  const codeLine = state.online && state.roomCode
+    ? `<p style="font-size:12px;color:var(--lime);margin-bottom:8px">Room code: <strong style="font-family:monospace;letter-spacing:0.08em">${escapeHtml(state.roomCode)}</strong>${state.isHost ? " · host" : ""}</p>`
+    : `<p style="font-size:12px;color:var(--muted);margin-bottom:8px">Local lobby (bots OK)</p>`;
+  left.innerHTML = `<h3 style="margin-bottom:8px;color:var(--cream)">${escapeHtml(state.room.name)}</h3>${codeLine}`;
   const list = el("div", "player-list");
   left.appendChild(list);
 
   const right = el("div", "panel");
   const map = getMap(state.room.mapId);
+  const hostOnly = state.online && !state.isHost;
   right.innerHTML = `
     <div class="field">
       <label>Mode</label>
-      <select id="mode">
+      <select id="mode" ${hostOnly ? "disabled" : ""}>
         <option value="classic">Classic</option>
         <option value="arrows">Arrows</option>
         <option value="deatharrows">Death Arrows</option>
@@ -359,21 +565,25 @@ function makeLobby() {
     </div>
     <div class="field">
       <label>Map</label>
-      <select id="map"></select>
+      <select id="map" ${hostOnly ? "disabled" : ""}></select>
     </div>
     <div class="field">
       <label>Rounds to win</label>
-      <input id="rounds" type="number" min="1" max="10" value="${state.room.roundsToWin}" />
+      <input id="rounds" type="number" min="1" max="10" value="${state.room.roundsToWin}" ${hostOnly ? "disabled" : ""} />
     </div>
-    <div class="field">
+    ${
+      state.online
+        ? `<p style="font-size:12px;color:var(--muted);margin:8px 0">Online matches are human-only (host runs physics).</p>`
+        : `<div class="field">
       <label>Bots</label>
       <input id="bots" type="number" min="0" max="7" value="${state.room.bots}" />
-    </div>
+    </div>`
+    }
     <p style="font-size:12px;color:var(--muted);margin:8px 0">Map: <strong style="color:var(--cream)">${map.name}</strong> by ${map.author}</p>
     <div class="row">
       <button class="btn-brown small" id="back">Leave</button>
       <button class="btn-brown small" id="ready">Ready</button>
-      <button class="btn-brown" id="start">Start</button>
+      <button class="btn-brown" id="start" ${hostOnly ? "disabled" : ""}>Start</button>
     </div>
   `;
 
@@ -409,6 +619,21 @@ function makeLobby() {
       mapSel.value = state.room.mapId;
     };
     fillMaps();
+
+    const pushConfig = () => {
+      if (state.online && state.isHost) {
+        net.updateConfig({
+          name: state.room.name,
+          mode: state.room.mode,
+          mapId: state.room.mapId,
+          roundsToWin: state.room.roundsToWin,
+          maxPlayers: state.room.maxPlayers,
+          teams: state.room.teams,
+          bots: 0,
+        });
+      }
+    };
+
     modeSel.addEventListener("change", () => {
       state.room.mode = modeSel.value as GameMode;
       const pool = mapsForMode(state.room.mode);
@@ -416,25 +641,41 @@ function makeLobby() {
         state.room.mapId = pool[0]?.id ?? "classic";
       }
       fillMaps();
+      pushConfig();
     });
     mapSel.addEventListener("change", () => {
       state.room.mapId = mapSel.value;
+      pushConfig();
     });
     right.querySelector<HTMLInputElement>("#rounds")!.addEventListener("change", (e) => {
       state.room.roundsToWin = Number((e.target as HTMLInputElement).value) || 3;
+      pushConfig();
     });
-    right.querySelector<HTMLInputElement>("#bots")!.addEventListener("change", (e) => {
+    const botsInput = right.querySelector<HTMLInputElement>("#bots");
+    botsInput?.addEventListener("change", (e) => {
       state.room.bots = Number((e.target as HTMLInputElement).value) || 0;
       buildLobbyFromQuickPlay();
       refreshList();
     });
-    right.querySelector("#back")!.addEventListener("click", () => setScreen("menu"));
+    right.querySelector("#back")!.addEventListener("click", () => {
+      if (state.online) disconnectOnline();
+      setScreen("menu");
+    });
     right.querySelector("#ready")!.addEventListener("click", () => {
       const me = state.lobbyPlayers.find((p) => p.id === state.profile.id);
-      if (me) me.ready = !me.ready;
+      if (!me) return;
+      me.ready = !me.ready;
+      if (state.online) net.setReady(me.ready);
       refreshList();
     });
-    right.querySelector("#start")!.addEventListener("click", () => startMatchFromLobby());
+    right.querySelector("#start")!.addEventListener("click", () => {
+      if (state.online) {
+        if (!state.isHost) return;
+        net.start();
+      } else {
+        startMatchFromLobby();
+      }
+    });
     refreshList();
   });
 
@@ -816,17 +1057,36 @@ function startMatchFromLobby() {
 
 function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
   stopMenuBackground();
+  const online = state.online;
+  const isHost = online && state.isHost;
+  const isClient = online && !state.isHost;
+
   engine = new BonkEngine(state.room.mode, state.room.mapId, state.room.roundsToWin);
   engine.addPlayers(state.lobbyPlayers);
   renderer = new GameRenderer(canvas);
-  input.bind(state.localTwoPlayer);
+  input.bind(state.localTwoPlayer && !online);
+  snapSendAcc = 0;
+
+  // Remote inputs received by host (playerId → latest bits)
+  const remoteInputs = new Map<string, number>();
+  let gameNetUnsub: (() => void) | null = null;
+  if (online) {
+    gameNetUnsub = net.on((msg) => {
+      if (msg.type === "input" && isHost) {
+        remoteInputs.set(msg.playerId, msg.bits);
+      }
+      if (msg.type === "chat") {
+        chatLines.push(`${msg.from}: ${msg.text}`);
+      }
+    });
+  }
 
   const hud = el("div", "hud");
   hud.innerHTML = `
     <div class="scoreboard" id="scoreboard"></div>
     <div class="banner" id="banner"></div>
     <div class="chat" id="chat"></div>
-    <div class="controls-hint">Arrows/WASD move · X heavy · Z special · Esc menu</div>
+    <div class="controls-hint">Arrows/WASD move · X heavy · Z special · Esc menu${online ? ` · ${isHost ? "HOST" : "CLIENT"} ${state.roomCode ?? ""}` : ""}</div>
     <button class="btn-brown small leave" id="leave">Leave</button>
   `;
   stage.appendChild(hud);
@@ -848,11 +1108,14 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
       .join("");
   };
 
+  let pendingBanner: string | undefined;
+
   engine.on((e) => {
     if (e.type === "banner") {
       banner.textContent = e.text;
       banner.classList.add("show");
       bannerTimer = 1.2;
+      pendingBanner = e.text;
     }
     if (e.type === "eliminated") {
       const victim = engine!.players.find((p) => p.id === e.id);
@@ -874,46 +1137,107 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
       refreshScore();
       setTimeout(() => {
         stopGameLoop(true);
+        gameNetUnsub?.();
+        if (online && isHost) net.endMatch();
         setScreen("lobby");
       }, 2500);
     }
   });
 
-  hud.querySelector("#leave")!.addEventListener("click", () => {
+  const leaveGame = () => {
     stopGameLoop(true);
+    gameNetUnsub?.();
+    if (online && isHost) net.endMatch();
     setScreen("lobby");
-  });
+  };
+
+  hud.querySelector("#leave")!.addEventListener("click", leaveGame);
 
   gameEscHandler = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      stopGameLoop(true);
-      setScreen("lobby");
-    }
+    if (e.key === "Escape") leaveGame();
   };
   window.addEventListener("keydown", gameEscHandler);
 
-  engine.startRound();
+  if (!isClient) {
+    engine.startRound();
+  }
   refreshScore();
   lastTs = performance.now();
+
   const loop = (ts: number) => {
     const dt = Math.min(0.05, (ts - lastTs) / 1000);
     lastTs = ts;
     if (!engine || !renderer) return;
 
-    // inputs
+    if (isClient) {
+      // Clients: send input, apply interpolated snapshots, draw (no local physics)
+      net.sendInput(input.primary);
+      const latest = snapBuffer.latest();
+      const sample = snapBuffer.sample() ?? latest;
+      if (sample) {
+        engine.applySnapshot(sample);
+        if (sample.banner && sample.banner !== lastBannerFromSnap) {
+          lastBannerFromSnap = sample.banner;
+          banner.textContent = sample.banner;
+          banner.classList.add("show");
+          bannerTimer = 1.2;
+        }
+      }
+      if (pendingClientMatchOver !== null) {
+        const winnerId = pendingClientMatchOver;
+        pendingClientMatchOver = null;
+        const w = engine.players.find((p) => p.id === winnerId);
+        chatLines.push(`Match over — ${w?.name ?? "Someone"} wins!`);
+        refreshScore();
+        stopGameLoop(true);
+        gameNetUnsub?.();
+        setTimeout(() => setScreen("lobby"), 1800);
+        return;
+      }
+      if (bannerTimer > 0) {
+        bannerTimer -= dt;
+        if (bannerTimer <= 0) banner.classList.remove("show");
+      }
+      refreshScore();
+      renderer.draw(engine, state.profile.id);
+      raf = requestAnimationFrame(loop);
+      return;
+    }
+
+    // Host (online) or pure local: run authority sim
     const me = engine.players.find((p) => p.id === state.profile.id);
     if (me) engine.setInput(me.id, input.primary);
-    if (state.localTwoPlayer) {
+
+    if (online && isHost) {
+      for (const [pid, bits] of remoteInputs) {
+        if (pid === state.profile.id) continue;
+        engine.setInput(pid, unpackInput(bits));
+      }
+    } else if (state.localTwoPlayer) {
       const p2 = engine.players.find((p) => p.id === "local2");
       if (p2) engine.setInput(p2.id, input.secondary);
     }
-    for (const p of engine.players) {
-      if (p.isBot && p.alive) {
-        engine.setInput(p.id, botThink(engine, p));
+
+    if (!online) {
+      for (const p of engine.players) {
+        if (p.isBot && p.alive) {
+          engine.setInput(p.id, botThink(engine, p));
+        }
       }
     }
 
     engine.update(dt);
+
+    if (online && isHost) {
+      snapSendAcc += dt;
+      if (snapSendAcc >= 1 / 20) {
+        snapSendAcc = 0;
+        const snap = engine.getSnapshot(pendingBanner);
+        pendingBanner = undefined;
+        net.sendSnapshot(snap);
+      }
+    }
+
     if (bannerTimer > 0) {
       bannerTimer -= dt;
       if (bannerTimer <= 0) banner.classList.remove("show");

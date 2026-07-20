@@ -5,17 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "wrangler dev --port 8787",
+    "dev:full": "npx concurrently -k \"npm run dev:server\" \"npm run dev\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:domain": "npm run build && wrangler deploy && echo 'Attach bonk.popped.dev in the Cloudflare dashboard (Workers → bonk → Domains) if not already set.'",
     "smoke": "node scripts/smoke.mjs",
-    "test:movement": "node scripts/movement.mjs"
+    "test:movement": "node scripts/movement.mjs",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "matter-js": "^0.20.0"
   },
   "devDependencies": {
     "@types/matter-js": "^0.19.8",
+    "concurrently": "^9.2.0",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "wrangler": "^4.26.0"
   }
 }

@@ -1,35 +1,54 @@
-# bonk.io clone
+# bonk · popped.dev
 
 A high-fidelity browser clone of [bonk.io](https://bonk.io/) — multiplayer physics arena where circular players knock each other off the map.
 
+**Live target:** [https://bonk.popped.dev](https://bonk.popped.dev)
+
 ## Research
 
-See [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) (20+ minutes of pre-implementation research) and [`docs/LEARNING_CHECKLIST.md`](docs/LEARNING_CHECKLIST.md) for the teach-back checklist.
+- [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) — original game research
+- [`docs/MULTIPLAYER_RESEARCH.md`](docs/MULTIPLAYER_RESEARCH.md) — responsive netcode + Cloudflare design
+- [`docs/LEARNING_CHECKLIST.md`](docs/LEARNING_CHECKLIST.md) — teach-back checklist
 
-## Play
+## Play locally
 
 ```bash
 npm install
-npm run dev
+npm run dev:full   # Vite :5173 + wrangler :8787 (proxied /api + /ws)
 ```
 
-Open the local URL Vite prints (default `http://localhost:5173`).
+Or separately: `npm run dev:server` then `npm run dev`.
+
+Open the Vite URL. Use **Online Multiplayer** to create/join rooms (needs the Worker). **Quick Play** still works offline with bots.
+
+## Deploy (Cloudflare)
+
+Requires the `popped.dev` zone in your Cloudflare account (for the custom domain).
+
+```bash
+npm run deploy
+```
+
+This builds the Vite SPA into `dist/`, then `wrangler deploy` publishes:
+
+- Static assets + SPA fallback
+- `/api/rooms`, `/api/health`
+- `/ws` → Durable Object `GameRoom`
+- Custom domain `bonk.popped.dev`
 
 ## Features
 
-- **UI shell** matching bonk.io: guest/login, brown menu buttons, top bar, logo wordmark, recorded-match style background
+- **Online multiplayer** via Cloudflare Durable Objects (host-authoritative physics, ~20 Hz snapshots, client interpolation)
+- **UI shell** matching bonk.io: guest/login, brown menu buttons, top bar, logo wordmark
 - **Classic / Arrows / Death Arrows / Grapple / Football** modes
 - **Matter.js** physics with heavy mode (X / Space / Shift)
-- **Quick Play** + **Custom Game** lobbies with AI bots
-- **Local 2-player** (Arrows + WASD)
-- **Skin editor** (base colour, accent, eyes/mouth)
-- **Simplified map editor** with playtest
-- Built-in maps including **Classic** (rotating lime platform)
+- **Quick Play** + local bots; **Local 2-player** (Arrows + WASD)
+- **Skin editor** + simplified **map editor**
 
 ## Controls
 
-| Action | Player 1 | Player 2 |
-|--------|----------|----------|
+| Action | Player 1 | Player 2 (local) |
+|--------|----------|------------------|
 | Move | Arrow keys | WASD |
 | Jump | ↑ | W |
 | Heavy | X / Space / Shift | C |
@@ -37,4 +56,4 @@ Open the local URL Vite prints (default `http://localhost:5173`).
 
 ## Stack
 
-Vite · TypeScript · Canvas 2D · Matter.js
+Vite · TypeScript · Canvas 2D · Matter.js · Cloudflare Workers · Durable Objects
