@@ -23,18 +23,20 @@ Open the Vite URL. Use **Online Multiplayer** to create/join rooms (needs the Wo
 
 ## Deploy (Cloudflare)
 
-Requires the `popped.dev` zone in your Cloudflare account (for the custom domain).
+Needs `CLOUDFLARE_API_TOKEN` (or `wrangler login`) on an account that owns the **`popped.dev`** zone.
 
 ```bash
+export CLOUDFLARE_API_TOKEN=...   # Account + Workers edit + Zone DNS edit for popped.dev
 npm run deploy
 ```
 
-This builds the Vite SPA into `dist/`, then `wrangler deploy` publishes:
+Then attach the hostname (dashboard → Workers → **bonk** → Domains → **bonk.popped.dev**), or uncomment the `[[routes]]` block in `wrangler.toml` and redeploy.
+
+This publishes:
 
 - Static assets + SPA fallback
 - `/api/rooms`, `/api/health`
 - `/ws` → Durable Object `GameRoom`
-- Custom domain `bonk.popped.dev`
 
 ## Features
 
