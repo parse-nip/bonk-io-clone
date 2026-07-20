@@ -12,12 +12,12 @@ const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
 const HEAVY_MASS = 2.4;
 // Continuous thruster force (all 4 directions), matching the college bonk physics
-// model: Fnet = F_thrust (+ weight from Matter gravity). Tuned so thrust is a
-// bit above map weight (~0.0012) so Up/Down can start bouncing from rest.
-const MOVE_FORCE = 0.00155;
-const HEAVY_MOVE_FORCE = 0.00055;
-const MAX_SPEED = 11.5;
-const HEAVY_MAX_SPEED = 7.5;
+// model: Fnet = F_thrust (+ weight from Matter gravity). Slightly above map
+// weight (~0.0012) so Up/Down can start bouncing from rest without rocketing.
+const MOVE_FORCE = 0.00138;
+const HEAVY_MOVE_FORCE = 0.00048;
+const MAX_SPEED = 11;
+const HEAVY_MAX_SPEED = 7.2;
 
 export interface EnginePlayer {
   id: string;
