@@ -33,7 +33,7 @@ export interface PlayerProfile {
 }
 
 export interface ShapeDef {
-  type: "box" | "circle";
+  type: "box" | "circle" | "polygon";
   x: number;
   y: number;
   w?: number;
@@ -41,18 +41,45 @@ export interface ShapeDef {
   r?: number;
   angle?: number;
   color: string;
+  name?: string;
   death?: boolean;
+  noPhysics?: boolean;
   static?: boolean;
   density?: number;
   friction?: number;
   restitution?: number;
+  fricPlayers?: boolean;
   rotate?: boolean;
   angularDamping?: number;
+  startSpeedX?: number;
+  startSpeedY?: number;
+  startSpin?: number;
+  fixedRotation?: boolean;
+  /** Relative vertices for polygon shapes (local space). */
+  vertices?: { x: number; y: number }[];
 }
 
 export interface SpawnDef {
   x: number;
   y: number;
+  startSpeedX?: number;
+  startSpeedY?: number;
+  priority?: number;
+  ffa?: boolean;
+  red?: boolean;
+  blue?: boolean;
+  green?: boolean;
+  yellow?: boolean;
+}
+
+export interface CapZoneDef {
+  name?: string;
+  type: "box" | "circle";
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  r?: number;
 }
 
 export interface MapDef {
@@ -67,6 +94,7 @@ export interface MapDef {
   killPadding: number;
   shapes: ShapeDef[];
   spawns: SpawnDef[];
+  capZones?: CapZoneDef[];
   football?: {
     ball: { x: number; y: number; r: number };
     goals: { x: number; y: number; w: number; h: number; team: "red" | "blue" }[];

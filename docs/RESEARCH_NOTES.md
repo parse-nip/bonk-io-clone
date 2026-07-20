@@ -56,6 +56,26 @@ Quick Play offers Classic / Arrows / Grapple. Custom Game can pick any mode + ma
 - Players: colored disks with optional layered shapes (eyes/mouth from skin layers)
 - Lobby: player list with ready checks, team colors (FFA/R/B/G/Y/spec), map preview, host Start
 
+## Map Editor (research pass 2026-07-20)
+
+Sources: bonkio.fandom.com (Editor, Editor Elements, Editor Preview, Editor Properties, Platforms, Spawn, Capture Zone), bonkioextended.fandom.com Map Editor, NamuWiki Bonk.io §3.3, DemystifyBonk Packets.md map envelope.
+
+### Original HTML5 editor layout (3 panels)
+1. **Elements** (left): collapsible Platforms / Spawns / Capture Zones; color bar; + / delete / duplicate / up / down
+2. **Preview** (center): undo/redo, map props gear, grid, fit/zoom, start/stop preview, play-from-editor; New / Load / Save; physical shape count + info box
+3. **Properties** (right): per-element settings, or Map Properties when gear active
+
+### Platform property groups (original)
+- **Basic:** Move Type (Stationary / Free Moving / Kinematic), X/Y, Angle, Bounciness, Density, Friction, Fric Players, Anti Tunnel, Collide Group/With
+- **Movement (free/kinematic):** Start Speed, Start Spin, Linear/Rotational Drag, Fixed Rotation, Apply Force, Force Direction, Torque
+- **Joints (free):** Rotating, Soft Rod, Follows Path, Springy (+ break force, draw line, attach)
+- **Shapes:** Circle / Rectangle / Polygon; Shrink, No Physics, No/Inner Grapple, Death; per-shape physics overrides; duplicate invert X/Y
+
+### Clone editor scope (this PR)
+Implemented UI parity for the three panels + New/Load/Save/Export/Play, undo/redo, grid/zoom/pan, platforms (box/circle/polygon), spawns (teams/priority/start speed), capture zones (stored + drawn), map props (size presets, gravity, kill bounds), move types Stationary / Free / Rotating-pivot, Death, No Physics, and localStorage persistence.
+
+Deferred vs original (physics complexity): full Kinematic move type, Soft Rod / Follows Path / Springy joints, collide groups, force zones, shrink-over-time, grapple-specific flags, online publish/community DB.
+
 ## Map system (simplified for clone)
 Bodies (`s` stationary / `d` dynamic / `k` kinematic), fixtures, shapes (`bx`/`ci`/`po`), joints (revolute, distance, etc.), spawns, cap zones, death fixtures.
 

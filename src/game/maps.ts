@@ -1,6 +1,6 @@
 import type { MapDef } from "../types";
 
-export const MAPS: MapDef[] = [
+export const BUILTIN_MAPS: MapDef[] = [
   {
     id: "classic",
     name: "Classic",
@@ -342,6 +342,15 @@ export const MAPS: MapDef[] = [
     ],
   },
 ];
+
+/** Builtin + custom maps. Mutated by `registerCustomMaps`. */
+export let MAPS: MapDef[] = [...BUILTIN_MAPS];
+
+export function registerCustomMaps(customs: MapDef[]): void {
+  const builtinIds = new Set(BUILTIN_MAPS.map((m) => m.id));
+  const cleaned = customs.filter((m) => m && m.id && !builtinIds.has(m.id));
+  MAPS = [...BUILTIN_MAPS, ...cleaned];
+}
 
 export function getMap(id: string): MapDef {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
