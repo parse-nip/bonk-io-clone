@@ -3,6 +3,9 @@ main = "worker/index.ts"
 compatibility_date = "2026-07-20"
 compatibility_flags = ["nodejs_compat"]
 
+# From parse-nip/popped-dev workers/agent-api (same CF account as popped.dev)
+account_id = "f176df02bc99b7cfffece89aa198d41e"
+
 workers_dev = true
 
 [assets]
@@ -24,14 +27,9 @@ class_name = "LobbyDirectory"
 tag = "v1"
 new_sqlite_classes = ["GameRoom", "LobbyDirectory"]
 
+[[routes]]
+pattern = "bonk.popped.dev"
+custom_domain = true
+
 [observability]
 enabled = true
-
-# Custom domain bonk.popped.dev:
-# After `npm run deploy` on an account that owns the popped.dev zone, either:
-#   1) Dashboard → Workers → bonk → Domains → Add → bonk.popped.dev
-#   2) Uncomment below and redeploy:
-#
-# [[routes]]
-# pattern = "bonk.popped.dev"
-# custom_domain = true
