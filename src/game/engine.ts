@@ -269,19 +269,41 @@ export class BonkEngine {
       }
     }
 
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      this.applyPlayerControl(p, dt);
+    // During the "Get Ready" countdown, keep players pinned at their spawns so
+    // they can't drift or fall off before the player gains control (on some maps
+    // an unfrozen player would fall to its death before the round even starts).
+    const freezing = this.countdown > 0;
+
+    if (!freezing) {
+      for (const p of this.players) {
+        if (!p.alive) continue;
+        this.applyPlayerControl(p, dt);
+      }
     }
 
     this.updateArrows(dt);
 
     Matter.Engine.update(this.engine, Math.min(dt, 0.033) * 1000);
 
+    if (freezing) {
+      this.freezePlayersAtSpawn();
+    }
+
     if (this.roundActive) {
       this.checkEliminations();
       this.checkFootball();
       this.checkRoundEnd();
+    }
+  }
+
+  private freezePlayersAtSpawn() {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.alive) continue;
+      const spawn = this.map.spawns[i % this.map.spawns.length];
+      Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
+      Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+      Matter.Body.setAngularVelocity(p.body, 0);
     }
   }
 
