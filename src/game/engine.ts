@@ -11,10 +11,12 @@ import { getMap } from "./maps";
 const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
 const HEAVY_MASS = 2.4;
-const MOVE_FORCE = 0.00185;
-const HEAVY_MOVE_FORCE = 0.00062;
+const MOVE_FORCE = 0.00165;
+const HEAVY_MOVE_FORCE = 0.00058;
 const JUMP_FORCE = 0.042;
-const AIR_CONTROL = 0.5;
+const AIR_CONTROL = 0.38;
+const MAX_SPEED = 10.5;
+const HEAVY_MAX_SPEED = 7;
 
 export interface EnginePlayer {
   id: string;
@@ -67,6 +69,8 @@ export class BonkEngine {
   height: number;
   private lastJump = new Map<string, number>();
   private pivotConstraint: Matter.Constraint | null = null;
+  private wasFreezing = false;
+  private simTime = 0;
 
   constructor(mode: GameMode, mapId: string, roundsToWin = 3) {
     this.mode = mode;
@@ -203,6 +207,9 @@ export class BonkEngine {
     this.clearArrows();
     this.roundActive = false;
     this.countdown = 2.2;
+    this.wasFreezing = false;
+    this.simTime = 0;
+    this.lastJump.clear();
     this.emit({ type: "banner", text: "Get Ready!" });
 
     for (let i = 0; i < this.players.length; i++) {
@@ -217,6 +224,7 @@ export class BonkEngine {
       p.charge = 0;
       p.aiming = false;
       if (p.body) {
+        if (p.body.isStatic) Matter.Body.setStatic(p.body, false);
         // ensure in world
         if (!this.world.bodies.includes(p.body)) {
           Matter.World.add(this.world, p.body);
@@ -261,6 +269,7 @@ export class BonkEngine {
   }
 
   update(dt: number) {
+    this.simTime += dt;
     if (this.countdown > 0) {
       this.countdown -= dt;
       if (this.countdown <= 0) {
@@ -274,6 +283,13 @@ export class BonkEngine {
     // an unfrozen player would fall to its death before the round even starts).
     const freezing = this.countdown > 0;
 
+    if (freezing) {
+      this.freezePlayersAtSpawn();
+    } else if (this.wasFreezing) {
+      this.unfreezePlayers();
+    }
+    this.wasFreezing = freezing;
+
     if (!freezing) {
       for (const p of this.players) {
         if (!p.alive) continue;
@@ -284,10 +300,6 @@ export class BonkEngine {
     this.updateArrows(dt);
 
     Matter.Engine.update(this.engine, Math.min(dt, 0.033) * 1000);
-
-    if (freezing) {
-      this.freezePlayersAtSpawn();
-    }
 
     if (this.roundActive) {
       this.checkEliminations();
@@ -301,7 +313,17 @@ export class BonkEngine {
       const p = this.players[i];
       if (!p.alive) continue;
       const spawn = this.map.spawns[i % this.map.spawns.length];
+      if (!p.body.isStatic) Matter.Body.setStatic(p.body, true);
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
+      Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+      Matter.Body.setAngularVelocity(p.body, 0);
+    }
+  }
+
+  private unfreezePlayers() {
+    for (const p of this.players) {
+      if (!p.alive || !p.body.isStatic) continue;
+      Matter.Body.setStatic(p.body, false);
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
       Matter.Body.setAngularVelocity(p.body, 0);
     }
@@ -439,8 +461,8 @@ export class BonkEngine {
       if (input.up && grounded) this.tryJump(p);
     }
 
-    // soft speed cap
-    const maxSpeed = heavy ? 7.5 : 11.5;
+    // soft speed cap (applied before physics so airborne drift stays controllable)
+    const maxSpeed = heavy ? HEAVY_MAX_SPEED : MAX_SPEED;
     const v = p.body.velocity;
     const speed = Math.hypot(v.x, v.y);
     if (speed > maxSpeed) {
@@ -452,10 +474,9 @@ export class BonkEngine {
   }
 
   private tryJump(p: EnginePlayer) {
-    const now = performance.now();
-    const last = this.lastJump.get(p.id) ?? 0;
-    if (now - last < 280) return;
-    this.lastJump.set(p.id, now);
+    const last = this.lastJump.get(p.id) ?? -1;
+    if (this.simTime - last < 0.28) return;
+    this.lastJump.set(p.id, this.simTime);
     Matter.Body.setVelocity(p.body, {
       x: p.body.velocity.x,
       y: -JUMP_FORCE * 220,
@@ -463,16 +484,28 @@ export class BonkEngine {
   }
 
   private isGrounded(p: EnginePlayer): boolean {
+    // Short downward probe from the feet — reliable for flat and tilted platforms.
+    const origin = p.body.position;
+    const feet = { x: origin.x, y: origin.y + PLAYER_RADIUS - 2 };
+    const probe = { x: feet.x, y: feet.y + 10 };
+    const rayHits = Matter.Query.ray(this.platforms, feet, probe);
+    if (rayHits.length > 0) {
+      return true;
+    }
+
     for (const plat of this.platforms) {
       const coll = Matter.Collision.collides(p.body, plat);
       if (!coll) continue;
-      // contact normal pointing somewhat upward relative to player
+      // Matter.js separation normals point down when standing on a surface below.
       const ny = coll.normal.y;
-      if (ny < -0.35 || (Math.abs(ny) < 0.2 && p.body.velocity.y >= -0.2)) {
+      if (ny > 0.35 && p.body.velocity.y >= -1.2) {
         return true;
       }
-      // fallback: player center above platform center and overlapping
-      if (p.body.position.y < plat.position.y && Math.abs(p.body.velocity.y) < 2.5) {
+      // Legacy fallback for shallow overlap on moving/tilting platforms.
+      if (
+        p.body.position.y <= plat.position.y &&
+        Math.abs(p.body.velocity.y) < 2.5
+      ) {
         return true;
       }
     }

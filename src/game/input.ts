@@ -5,8 +5,10 @@ export class InputManager {
   primary: InputState = emptyInput();
   secondary: InputState = emptyInput();
   private bound = false;
+  twoPlayer = false;
 
-  bind() {
+  bind(twoPlayer = false) {
+    this.twoPlayer = twoPlayer;
     if (this.bound) return;
     this.bound = true;
     window.addEventListener("keydown", this.onKeyDown);
@@ -59,16 +61,20 @@ export class InputManager {
         p.special = pressed;
         break;
       case "KeyA":
-        s.left = pressed;
+        if (this.twoPlayer) s.left = pressed;
+        else p.left = pressed;
         break;
       case "KeyD":
-        s.right = pressed;
+        if (this.twoPlayer) s.right = pressed;
+        else p.right = pressed;
         break;
       case "KeyW":
-        s.up = pressed;
+        if (this.twoPlayer) s.up = pressed;
+        else p.up = pressed;
         break;
       case "KeyS":
-        s.down = pressed;
+        if (this.twoPlayer) s.down = pressed;
+        else p.down = pressed;
         break;
       case "KeyC":
         s.heavy = pressed;

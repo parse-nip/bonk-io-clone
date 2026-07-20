@@ -751,7 +751,7 @@ function makeSettings() {
       <input type="checkbox" id="mute" ${state.settings.mute ? "checked" : ""}/> Mute (placeholder)
     </label>
     <p style="font-size:13px;color:var(--muted);line-height:1.45;margin:12px 0">
-      Controls: Arrow keys move, Up jump, X/Space/Shift heavy, Z/Y special.<br/>
+      Controls: Arrow keys or WASD move, Up/W jump, X/Shift heavy, Z/Y special.<br/>
       Player 2: WASD, C heavy, V special.
     </p>
     <div class="row">
@@ -819,14 +819,14 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
   engine = new BonkEngine(state.room.mode, state.room.mapId, state.room.roundsToWin);
   engine.addPlayers(state.lobbyPlayers);
   renderer = new GameRenderer(canvas);
-  input.bind();
+  input.bind(state.localTwoPlayer);
 
   const hud = el("div", "hud");
   hud.innerHTML = `
     <div class="scoreboard" id="scoreboard"></div>
     <div class="banner" id="banner"></div>
     <div class="chat" id="chat"></div>
-    <div class="controls-hint">Arrows move · X heavy · Z special · Esc menu</div>
+    <div class="controls-hint">Arrows/WASD move · X heavy · Z special · Esc menu</div>
     <button class="btn-brown small leave" id="leave">Leave</button>
   `;
   stage.appendChild(hud);
