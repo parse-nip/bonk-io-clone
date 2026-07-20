@@ -345,6 +345,12 @@ export class BonkEngine {
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
       Matter.Body.setAngularVelocity(p.body, 0);
+      p.tutorial = createTutorialState(
+        spawn.x,
+        matterToTutorialY(spawn.y, this.floorMatterY),
+        0,
+        0,
+      );
     }
   }
 

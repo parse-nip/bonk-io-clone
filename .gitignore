@@ -4,4 +4,5 @@ dist
 *.local
 .env
 .tmp-engine.mjs
+.tmp-tutorial-physics.mjs
 .tmp/
