@@ -1,0 +1,21 @@
+{
+  "name": "bonk-io-clone",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke.mjs",
+    "test:movement": "node scripts/movement.mjs"
+  },
+  "dependencies": {
+    "matter-js": "^0.20.0"
+  },
+  "devDependencies": {
+    "@types/matter-js": "^0.19.8",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
