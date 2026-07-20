@@ -4,23 +4,23 @@ Use this to verify you understand the thruster-physics change.
 
 ## 1) The problem
 - [ ] Classic mode used a **platformer jump** (`tryJump` only when grounded) and **no Down force**.
-- [ ] Real bonk.io / the OSU tutorial use **continuous thruster forces** on Left/Right/Up/Down every frame.
-- [ ] Air control was artificially reduced to 38%, so mid-air steering felt wrong.
-- [ ] Why it mattered: without Up/Down thrusters you cannot start bouncing from rest the way bonk levels expect.
+- [ ] The OSU `bonk_v6` tutorial uses **exact kinematic integration** from `draw()`, not Matter.js `applyForce`.
+- [ ] My first fix approximated forces in Matter — that was **not** what the assignment code does.
 
-## 2) The solution
-- [ ] `applyThrusterForce` sets `Fx`/`Fy` from input and calls `Matter.Body.applyForce` each update.
-- [ ] Gravity stays in Matter (`engine.gravity`); net vertical accel is thrust + weight (tutorial's `Fnety = Fy - mass*g`).
-- [ ] Same force in air and on ground (no `AIR_CONTROL` penalty).
-- [ ] Heavy mode still lowers thruster magnitude and raises mass.
-- [ ] Edge case: during Arrows aim, horizontal keys rotate aim; vertical thrusters still apply.
+## 2) The solution (exact tutorial loop)
+- [ ] Constants: `mass=3.0`, `dt=0.1`, `g=9.8`, thrust `±15`.
+- [ ] Each frame: `vx += deltaVx`, `vy += deltaVy`, then `x += vx*dt`, `y += vy*dt`.
+- [ ] Vertical: `Fy` from Up/Down → `Fnety = Fy - mass*g` → `deltaVy = (Fnety/mass)*dt`.
+- [ ] Bounce: if `y - radius < 0` and `0 < x < width`, then `vy = -vy`.
+- [ ] Horizontal: `Fx` from Left/Right → `Fnetx = Fx` → `deltaVx = (Fx/mass)*dt`.
+- [ ] Implemented in `src/game/tutorialPhysics.ts`, wired in `src/game/engine.ts`.
 
-## 3) Broader impact
-- [ ] Classic / Grapple / Football / Arrows (not aiming) all share the thruster path.
-- [ ] Bots use Up/Down as thrusters, not rare jump taps.
+## 3) Broader context
+- [ ] Matter.js is collision-only for players; tutorial state drives position each frame.
+- [ ] Heavy mode multiplies mass in the same formulas (slower accel, harder to push).
 - [ ] `npm run test:movement` asserts horizontal drive, lift, down-press, and air strafe.
 
-## Quiz yourself (answers in the PR description)
-1. Why is `Fnetx = Fx` an "extra step" in the tutorial if gravity is only vertical?
-2. In Matter.js, which sign is "up" for `applyForce`? Why?
-3. If thruster force ≤ weight force, can holding Up lift you off a flat floor? What else helps you bounce?
+## Quiz yourself
+1. Why is `Fnetx = Fx` an "extra step" when gravity is vertical only?
+2. With `g=9.8`, `mass=3`, is `Fy=15` (Up) enough to hover? What does Down + Up bouncing do?
+3. Why do we store `deltaVx`/`deltaVy` across frames instead of applying forces directly to velocity?

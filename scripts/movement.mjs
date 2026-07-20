@@ -76,7 +76,7 @@ const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Up thruster lifts off the floor (not a grounded jump impulse).
+// 3) Up thruster lifts off the floor (tutorial Fnety = Fy - mass*g).
 const up = makeEngine("flat");
 settle(up);
 const floorY = up.players[0].body.position.y;
@@ -86,13 +86,12 @@ for (let i = 0; i < 90; i++) {
   up.update(1 / 60);
   minY = Math.min(minY, up.players[0].body.position.y);
 }
-const lifted = floorY - minY > 40;
+const lifted = floorY - minY > 15;
 
 // 4) Down thruster increases downward speed while airborne.
 const down = makeEngine("flat");
 settle(down);
-// loft with up first
-for (let i = 0; i < 45; i++) {
+for (let i = 0; i < 30; i++) {
   down.setInput("p1", { ...emptyInput(), up: true });
   down.update(1 / 60);
 }
@@ -103,12 +102,12 @@ for (let i = 0; i < 40; i++) {
   down.update(1 / 60);
   maxY = Math.max(maxY, down.players[0].body.position.y);
 }
-const pressedDown = maxY - midY > 20;
+const pressedDown = maxY - midY > 10;
 
-// 5) Full air control: horizontal force while airborne (no 0.38 air penalty).
+// 5) Full air control: horizontal thrust while airborne.
 const air = makeEngine("flat");
 settle(air);
-for (let i = 0; i < 50; i++) {
+for (let i = 0; i < 40; i++) {
   air.setInput("p1", { ...emptyInput(), up: true });
   air.update(1 / 60);
 }
@@ -120,11 +119,11 @@ const result = {
   ok:
     orbitAlive &&
     orbitPinned &&
-    dxRight > 80 &&
-    dxLeft < -80 &&
+    dxRight > 150 &&
+    dxLeft < -150 &&
     lifted &&
     pressedDown &&
-    airDx < -60 &&
+    airDx < -80 &&
     !flatRight.players[0].body.isStatic,
   orbitAlive,
   orbitPinned,
