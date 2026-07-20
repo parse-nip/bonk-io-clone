@@ -32,12 +32,26 @@ Use this to track understanding. Restate each item in your own words before mark
 - [ ] What would need to change to go from local/bots → real multiplayer rooms?
 - [ ] What breaks if friction/restitution/mass ratios are wrong?
 
+## 4) Map Editor — problem, solution, impact
+
+- [ ] Why did bonk.io need a host-side map editor? (UGC → retention / custom rooms)
+- [ ] What are the three original editor panels, and what job does each do?
+- [ ] What’s the difference between Stationary, Free Moving, and Rotating platforms in *our* engine?
+- [ ] Why do Death + No Physics interact the way they do? (death ignored when noPhysics)
+- [ ] How do custom maps survive a refresh? (`localStorage` → `registerCustomMaps` → `MAPS`/`getMap`)
+- [ ] What did we intentionally *not* clone yet (joints / collide groups), and why?
+
+**Quiz yourself:** If you duplicate a platform with “Dup Invert X”, what coordinate changes, and why is that useful for symmetric arenas?
+
 ## Open quizzes (answer before looking at code)
 
 1. Input bitfield: which bit is heavy? Special?
 2. What does `ppm` control in map data?
 3. In Grapple, what knocks you off your rope?
 4. Name three host-only Custom Game powers.
+5. In the editor Elements panel, what do + / 🗑 / ⧉ / ▲ / ▼ do?
+6. Which move type creates a Matter constraint pivot in `BonkEngine.buildMap`?
+7. Where is the editor draft autosaved so leaving the screen doesn’t wipe work?
 
 ---
 
