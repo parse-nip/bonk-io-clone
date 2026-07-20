@@ -65,15 +65,18 @@ export function botThink(engine: BonkEngine, bot: EnginePlayer): InputState {
     return input;
   }
 
-  // classic chase
+  // classic chase — thrusters in all 4 directions (tutorial / bonk model)
   const predict = foe.body.velocity.x * 0.18;
   const targetX = fpos.x + predict;
   if (pos.x < targetX - 6) input.right = true;
   if (pos.x > targetX + 6) input.left = true;
 
-  // jump if below or stuck
-  if (dy < -25 && Math.random() < 0.08) input.up = true;
-  if (Math.abs(bot.body.velocity.x) < 0.4 && Math.random() < 0.04) input.up = true;
+  // vertical thrusters: chase above/below, or bounce when stuck on the floor
+  if (dy < -18) input.up = true;
+  if (dy > 22) input.down = true;
+  if (Math.abs(bot.body.velocity.x) < 0.4 && Math.random() < 0.06) {
+    input.up = true;
+  }
 
   // edge awareness — back off if near kill zone
   if (pos.x < 80) input.right = true;

@@ -11,12 +11,13 @@ import { getMap } from "./maps";
 const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
 const HEAVY_MASS = 2.4;
-const MOVE_FORCE = 0.00165;
-const HEAVY_MOVE_FORCE = 0.00058;
-const JUMP_FORCE = 0.042;
-const AIR_CONTROL = 0.38;
-const MAX_SPEED = 10.5;
-const HEAVY_MAX_SPEED = 7;
+// Continuous thruster force (all 4 directions), matching the college bonk physics
+// model: Fnet = F_thrust (+ weight from Matter gravity). Tuned so thrust is a
+// bit above map weight (~0.0012) so Up/Down can start bouncing from rest.
+const MOVE_FORCE = 0.00155;
+const HEAVY_MOVE_FORCE = 0.00055;
+const MAX_SPEED = 11.5;
+const HEAVY_MAX_SPEED = 7.5;
 
 export interface EnginePlayer {
   id: string;
@@ -67,10 +68,8 @@ export class BonkEngine {
   listeners: ((e: EngineEvent) => void)[] = [];
   width: number;
   height: number;
-  private lastJump = new Map<string, number>();
   private pivotConstraint: Matter.Constraint | null = null;
   private wasFreezing = false;
-  private simTime = 0;
 
   constructor(mode: GameMode, mapId: string, roundsToWin = 3) {
     this.mode = mode;
@@ -208,8 +207,6 @@ export class BonkEngine {
     this.roundActive = false;
     this.countdown = 2.2;
     this.wasFreezing = false;
-    this.simTime = 0;
-    this.lastJump.clear();
     this.emit({ type: "banner", text: "Get Ready!" });
 
     for (let i = 0; i < this.players.length; i++) {
@@ -269,7 +266,6 @@ export class BonkEngine {
   }
 
   update(dt: number) {
-    this.simTime += dt;
     if (this.countdown > 0) {
       this.countdown -= dt;
       if (this.countdown <= 0) {
@@ -337,10 +333,12 @@ export class BonkEngine {
       Matter.Body.setMass(p.body, targetMass);
     }
 
-    // Football: floaty, no gravity feel already from map; kick with heavy
-    const forceScale = heavy ? HEAVY_MOVE_FORCE : MOVE_FORCE;
-    const grounded = this.isGrounded(p);
-    const air = grounded ? 1 : AIR_CONTROL;
+    // Tutorial / real bonk model: continuous thruster forces on arrow keys
+    // (Fx from left/right, Fy from up/down). Gravity stays in Matter; net
+    // vertical force is F_thrust + weight. Same force in air and on ground.
+    const forceScale =
+      (heavy ? HEAVY_MOVE_FORCE : MOVE_FORCE) *
+      (this.mode === "football" ? 1.25 : 1);
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
@@ -351,45 +349,18 @@ export class BonkEngine {
         p.charge = Math.min(1, p.charge + dt * 0.9);
         if (input.left) p.aimAngle -= dt * 2.8;
         if (input.right) p.aimAngle += dt * 2.8;
-        if (input.up && grounded) this.tryJump(p);
+        // Vertical thrusters still work while aiming (strafe locked to aim).
+        this.applyThrusterForce(p, forceScale, { horizontal: false, vertical: true });
       } else {
         if (p.aiming && p.charge > 0.08) {
           this.fireArrow(p);
         }
         p.aiming = false;
         p.charge = 0;
-        if (input.left) {
-          Matter.Body.applyForce(p.body, p.body.position, {
-            x: -forceScale * air,
-            y: 0,
-          });
-          p.facing = -1;
-        }
-        if (input.right) {
-          Matter.Body.applyForce(p.body, p.body.position, {
-            x: forceScale * air,
-            y: 0,
-          });
-          p.facing = 1;
-        }
-        if (input.up && grounded) this.tryJump(p);
+        this.applyThrusterForce(p, forceScale);
       }
     } else if (this.mode === "grapple") {
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: -forceScale * air,
-          y: 0,
-        });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: forceScale * air,
-          y: 0,
-        });
-        p.facing = 1;
-      }
-      if (input.up && grounded) this.tryJump(p);
+      this.applyThrusterForce(p, forceScale);
 
       if (input.special) {
         if (!p.grapple) this.attachGrapple(p);
@@ -414,20 +385,7 @@ export class BonkEngine {
         }
       }
     } else if (this.mode === "football") {
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: -forceScale * 1.3, y: 0 });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: forceScale * 1.3, y: 0 });
-        p.facing = 1;
-      }
-      if (input.up) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: -forceScale * 1.3 });
-      }
-      if (input.down) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: forceScale * 1.3 });
-      }
+      this.applyThrusterForce(p, forceScale);
       if (heavy && this.ball) {
         const d = Matter.Vector.magnitude(
           Matter.Vector.sub(p.body.position, this.ball.position),
@@ -443,25 +401,11 @@ export class BonkEngine {
         }
       }
     } else {
-      // classic
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: -forceScale * air,
-          y: 0,
-        });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: forceScale * air,
-          y: 0,
-        });
-        p.facing = 1;
-      }
-      if (input.up && grounded) this.tryJump(p);
+      // classic — same thruster physics as the OSU bonk_v6 tutorial
+      this.applyThrusterForce(p, forceScale);
     }
 
-    // soft speed cap (applied before physics so airborne drift stays controllable)
+    // soft speed cap so continuous thrust stays readable
     const maxSpeed = heavy ? HEAVY_MAX_SPEED : MAX_SPEED;
     const v = p.body.velocity;
     const speed = Math.hypot(v.x, v.y);
@@ -473,43 +417,43 @@ export class BonkEngine {
     }
   }
 
-  private tryJump(p: EnginePlayer) {
-    const last = this.lastJump.get(p.id) ?? -1;
-    if (this.simTime - last < 0.28) return;
-    this.lastJump.set(p.id, this.simTime);
-    Matter.Body.setVelocity(p.body, {
-      x: p.body.velocity.x,
-      y: -JUMP_FORCE * 220,
-    });
-  }
+  /**
+   * Apply continuous directional thruster forces from the current input.
+   * Mirrors the tutorial:
+   *   Fx = ±F, Fy = ±F from arrow keys; ax = Fx/m, ay = (Fy + weight)/m
+   * Matter.js already adds weight each step via engine.gravity.
+   */
+  private applyThrusterForce(
+    p: EnginePlayer,
+    forceScale: number,
+    axes: { horizontal?: boolean; vertical?: boolean } = {
+      horizontal: true,
+      vertical: true,
+    },
+  ) {
+    const { input } = p;
+    let fx = 0;
+    let fy = 0;
 
-  private isGrounded(p: EnginePlayer): boolean {
-    // Short downward probe from the feet — reliable for flat and tilted platforms.
-    const origin = p.body.position;
-    const feet = { x: origin.x, y: origin.y + PLAYER_RADIUS - 2 };
-    const probe = { x: feet.x, y: feet.y + 10 };
-    const rayHits = Matter.Query.ray(this.platforms, feet, probe);
-    if (rayHits.length > 0) {
-      return true;
-    }
-
-    for (const plat of this.platforms) {
-      const coll = Matter.Collision.collides(p.body, plat);
-      if (!coll) continue;
-      // Matter.js separation normals point down when standing on a surface below.
-      const ny = coll.normal.y;
-      if (ny > 0.35 && p.body.velocity.y >= -1.2) {
-        return true;
+    if (axes.horizontal !== false) {
+      if (input.left) {
+        fx -= forceScale;
+        p.facing = -1;
       }
-      // Legacy fallback for shallow overlap on moving/tilting platforms.
-      if (
-        p.body.position.y <= plat.position.y &&
-        Math.abs(p.body.velocity.y) < 2.5
-      ) {
-        return true;
+      if (input.right) {
+        fx += forceScale;
+        p.facing = 1;
       }
     }
-    return false;
+    if (axes.vertical !== false) {
+      // Matter Y+ is down, so Up applies a negative force (against gravity).
+      if (input.up) fy -= forceScale;
+      if (input.down) fy += forceScale;
+    }
+
+    if (fx !== 0 || fy !== 0) {
+      Matter.Body.applyForce(p.body, p.body.position, { x: fx, y: fy });
+    }
   }
 
   private attachGrapple(p: EnginePlayer) {

@@ -1,5 +1,6 @@
 /**
- * Headless movement regression: spawn freeze, grounded jump, and horizontal drive.
+ * Headless movement regression for thruster-based bonk physics:
+ * spawn freeze, horizontal drive, vertical up/down thrusters, air control.
  */
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -62,7 +63,7 @@ const orbitPinned =
   Math.abs(orbit.players[0].body.position.x - 200) < 1 &&
   Math.abs(orbit.players[0].body.position.y - 200) < 1;
 
-// 2) Horizontal control after BONK on flat arena.
+// 2) Horizontal thrusters after BONK on flat arena.
 const flatRight = makeEngine("flat");
 settle(flatRight);
 const startX = flatRight.players[0].body.position.x;
@@ -75,17 +76,45 @@ const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Jump should lift the player off the floor.
-const jump = makeEngine("flat");
-settle(jump);
-const floorY = jump.players[0].body.position.y;
+// 3) Up thruster lifts off the floor (not a grounded jump impulse).
+const up = makeEngine("flat");
+settle(up);
+const floorY = up.players[0].body.position.y;
 let minY = floorY;
-for (let i = 0; i < 20; i++) {
-  jump.setInput("p1", { ...emptyInput(), up: true });
-  jump.update(1 / 60);
-  minY = Math.min(minY, jump.players[0].body.position.y);
+for (let i = 0; i < 90; i++) {
+  up.setInput("p1", { ...emptyInput(), up: true });
+  up.update(1 / 60);
+  minY = Math.min(minY, up.players[0].body.position.y);
 }
-const jumped = floorY - minY > 8;
+const lifted = floorY - minY > 40;
+
+// 4) Down thruster increases downward speed while airborne.
+const down = makeEngine("flat");
+settle(down);
+// loft with up first
+for (let i = 0; i < 45; i++) {
+  down.setInput("p1", { ...emptyInput(), up: true });
+  down.update(1 / 60);
+}
+const midY = down.players[0].body.position.y;
+let maxY = midY;
+for (let i = 0; i < 40; i++) {
+  down.setInput("p1", { ...emptyInput(), down: true });
+  down.update(1 / 60);
+  maxY = Math.max(maxY, down.players[0].body.position.y);
+}
+const pressedDown = maxY - midY > 20;
+
+// 5) Full air control: horizontal force while airborne (no 0.38 air penalty).
+const air = makeEngine("flat");
+settle(air);
+for (let i = 0; i < 50; i++) {
+  air.setInput("p1", { ...emptyInput(), up: true });
+  air.update(1 / 60);
+}
+const airX0 = air.players[0].body.position.x;
+drive(air, { ...emptyInput(), left: true }, 60);
+const airDx = air.players[0].body.position.x - airX0;
 
 const result = {
   ok:
@@ -93,13 +122,19 @@ const result = {
     orbitPinned &&
     dxRight > 80 &&
     dxLeft < -80 &&
-    jumped &&
+    lifted &&
+    pressedDown &&
+    airDx < -60 &&
     !flatRight.players[0].body.isStatic,
   orbitAlive,
   orbitPinned,
   dxRight: +dxRight.toFixed(1),
   dxLeft: +dxLeft.toFixed(1),
-  jumped,
+  liftPx: +(floorY - minY).toFixed(1),
+  lifted,
+  downDropPx: +(maxY - midY).toFixed(1),
+  pressedDown,
+  airDx: +airDx.toFixed(1),
   playerStatic: flatRight.players[0].body.isStatic,
 };
 
