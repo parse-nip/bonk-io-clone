@@ -5,6 +5,7 @@ import type {
   MapDef,
   PlayerProfile,
   Skin,
+  SpawnDef,
 } from "../types";
 import { getMap } from "./maps";
 import {
@@ -73,10 +74,22 @@ export class BonkEngine {
   listeners: ((e: EngineEvent) => void)[] = [];
   width: number;
   height: number;
-  private pivotConstraint: Matter.Constraint | null = null;
+  private pivotConstraints: Matter.Constraint[] = [];
   private wasFreezing = false;
   /** Matter y of the tutorial floor line (tutorial y = 0). */
   private floorMatterY: number;
+  /** Platform body → spawn reset pose / velocities from map def index. */
+  private platformMeta = new Map<
+    number,
+    {
+      x: number;
+      y: number;
+      angle: number;
+      startSpeedX: number;
+      startSpeedY: number;
+      startSpin: number;
+    }
+  >();
 
   constructor(mode: GameMode, mapId: string, roundsToWin = 3) {
     this.mode = mode;
@@ -112,21 +125,37 @@ export class BonkEngine {
   }
 
   private buildMap() {
+    this.platformMeta.clear();
     for (const shape of this.map.shapes) {
-      let body: Matter.Body;
+      const isRotate = !!shape.rotate;
+      const isDynamic = shape.static === false || isRotate;
       const opts: Matter.IBodyDefinition = {
-        isStatic: shape.static !== false && !shape.rotate,
+        isStatic: !isDynamic,
+        isSensor: !!shape.noPhysics,
         friction: shape.friction ?? 0.4,
         restitution: shape.restitution ?? 0.5,
         density: shape.density ?? 0.002,
-        label: shape.death ? "death" : "platform",
+        label: shape.death && !shape.noPhysics ? "death" : "platform",
         angle: ((shape.angle ?? 0) * Math.PI) / 180,
         frictionAir: 0.01,
       };
 
+      let body: Matter.Body | null = null;
       if (shape.type === "circle") {
         body = Matter.Bodies.circle(shape.x, shape.y, shape.r ?? 30, opts);
-      } else {
+      } else if (shape.type === "polygon" && shape.vertices && shape.vertices.length >= 3) {
+        const localVerts = shape.vertices;
+        const verts = localVerts.map((v) => ({
+          x: shape.x + v.x,
+          y: shape.y + v.y,
+        }));
+        const built = Matter.Bodies.fromVertices(shape.x, shape.y, [verts], opts);
+        if (built) {
+          body = built;
+          Matter.Body.setAngle(body, opts.angle ?? 0);
+        }
+      }
+      if (!body) {
         body = Matter.Bodies.rectangle(
           shape.x,
           shape.y,
@@ -138,22 +167,41 @@ export class BonkEngine {
 
       (body as Matter.Body & { fillColor?: string }).fillColor = shape.color;
 
-      if (shape.rotate) {
+      if (shape.fixedRotation) {
+        body.inertia = Infinity;
+        body.inverseInertia = 0;
+      }
+
+      if (isRotate) {
         body.isStatic = false;
-        body.frictionAir = 0.02;
         Matter.Body.setDensity(body, shape.density ?? 0.0008);
-        this.pivotConstraint = Matter.Constraint.create({
+        const pivot = Matter.Constraint.create({
           pointA: { x: shape.x, y: shape.y },
           bodyB: body,
           pointB: { x: 0, y: 0 },
           stiffness: 1,
           length: 0,
         });
-        Matter.World.add(this.world, this.pivotConstraint);
-        // soft angular damping via high inertia + air friction (Classic tilt feel)
+        Matter.World.add(this.world, pivot);
+        this.pivotConstraints.push(pivot);
         Matter.Body.setInertia(body, body.inertia * 3.4);
-        body.frictionAir = 0.05;
+        body.frictionAir = shape.angularDamping ?? 0.05;
+      } else if (isDynamic) {
+        body.frictionAir = 0.01;
+        if (shape.angularDamping != null) {
+          body.frictionAir = Math.max(body.frictionAir, shape.angularDamping * 0.2);
+        }
       }
+
+      const idx = this.platforms.length;
+      this.platformMeta.set(idx, {
+        x: shape.x,
+        y: shape.y,
+        angle: ((shape.angle ?? 0) * Math.PI) / 180,
+        startSpeedX: shape.startSpeedX ?? 0,
+        startSpeedY: shape.startSpeedY ?? 0,
+        startSpin: shape.startSpin ?? 0,
+      });
 
       this.platforms.push(body);
       Matter.World.add(this.world, body);
@@ -183,9 +231,16 @@ export class BonkEngine {
     }
   }
 
+  private pickSpawn(index: number, team: number) {
+    const usable = this.map.spawns.filter((s) => spawnAllowsTeam(s, team));
+    const pool = usable.length ? usable : this.map.spawns;
+    const ordered = [...pool].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    return ordered[index % ordered.length] ?? { x: this.width / 2, y: 120 };
+  }
+
   addPlayers(profiles: PlayerProfile[]) {
     this.players = profiles.map((p, i) => {
-      const spawn = this.map.spawns[i % this.map.spawns.length];
+      const spawn = this.pickSpawn(i, p.team);
       const body = Matter.Bodies.circle(spawn.x, spawn.y, PLAYER_RADIUS, {
         restitution: 0.55,
         friction: 0.35,
@@ -232,18 +287,21 @@ export class BonkEngine {
 
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      const spawn = this.map.spawns[i % this.map.spawns.length];
+      const spawn = this.pickSpawn(i, p.team);
       p.alive = true;
       this.releaseGrapple(p);
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
-      Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+      Matter.Body.setVelocity(p.body, {
+        x: spawn.startSpeedX ?? 0,
+        y: spawn.startSpeedY ?? 0,
+      });
       Matter.Body.setAngularVelocity(p.body, 0);
       Matter.Body.setMass(p.body, TUTORIAL_MASS);
       p.tutorial = createTutorialState(
         spawn.x,
         matterToTutorialY(spawn.y, this.floorMatterY),
-        0,
-        0,
+        spawn.startSpeedX ?? 0,
+        -(spawn.startSpeedY ?? 0),
       );
       p.charge = 0;
       p.aiming = false;
@@ -264,16 +322,17 @@ export class BonkEngine {
       Matter.Body.setVelocity(this.ball, { x: 0, y: 0 });
     }
 
-    for (const plat of this.platforms) {
-      if (!plat.isStatic) {
-        Matter.Body.setAngle(plat, 0);
-        Matter.Body.setAngularVelocity(plat, 0);
-        const shape = this.map.shapes.find((s) => s.rotate);
-        if (shape) {
-          Matter.Body.setPosition(plat, { x: shape.x, y: shape.y });
-          Matter.Body.setVelocity(plat, { x: 0, y: 0 });
-        }
-      }
+    for (let i = 0; i < this.platforms.length; i++) {
+      const plat = this.platforms[i];
+      const meta = this.platformMeta.get(i);
+      if (!meta || plat.isStatic) continue;
+      Matter.Body.setPosition(plat, { x: meta.x, y: meta.y });
+      Matter.Body.setAngle(plat, meta.angle);
+      Matter.Body.setVelocity(plat, {
+        x: meta.startSpeedX,
+        y: meta.startSpeedY,
+      });
+      Matter.Body.setAngularVelocity(plat, meta.startSpin);
     }
   }
 
@@ -308,8 +367,10 @@ export class BonkEngine {
 
     if (freezing) {
       this.freezePlayersAtSpawn();
+      this.freezeDynamicPlatforms();
     } else if (this.wasFreezing) {
       this.unfreezePlayers();
+      this.releaseDynamicPlatforms();
     }
     this.wasFreezing = freezing;
 
@@ -340,7 +401,7 @@ export class BonkEngine {
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p.alive) continue;
-      const spawn = this.map.spawns[i % this.map.spawns.length];
+      const spawn = this.pickSpawn(i, p.team);
       if (!p.body.isStatic) Matter.Body.setStatic(p.body, true);
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
@@ -348,18 +409,25 @@ export class BonkEngine {
       p.tutorial = createTutorialState(
         spawn.x,
         matterToTutorialY(spawn.y, this.floorMatterY),
-        0,
-        0,
+        spawn.startSpeedX ?? 0,
+        -(spawn.startSpeedY ?? 0),
       );
     }
   }
 
   private unfreezePlayers() {
-    for (const p of this.players) {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
       if (!p.alive || !p.body.isStatic) continue;
+      const spawn = this.pickSpawn(i, p.team);
       Matter.Body.setStatic(p.body, false);
-      Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+      Matter.Body.setVelocity(p.body, {
+        x: spawn.startSpeedX ?? 0,
+        y: spawn.startSpeedY ?? 0,
+      });
       Matter.Body.setAngularVelocity(p.body, 0);
+      p.tutorial.vx = spawn.startSpeedX ?? 0;
+      p.tutorial.vy = -(spawn.startSpeedY ?? 0);
     }
   }
 
@@ -378,6 +446,33 @@ export class BonkEngine {
       if (!p.alive) continue;
       p.tutorial.x = p.body.position.x;
       p.tutorial.y = matterToTutorialY(p.body.position.y, this.floorMatterY);
+    }
+  }
+
+  private freezeDynamicPlatforms() {
+    for (let i = 0; i < this.platforms.length; i++) {
+      const plat = this.platforms[i];
+      const meta = this.platformMeta.get(i);
+      if (!meta || plat.isStatic) continue;
+      Matter.Body.setPosition(plat, { x: meta.x, y: meta.y });
+      Matter.Body.setAngle(plat, meta.angle);
+      Matter.Body.setVelocity(plat, { x: 0, y: 0 });
+      Matter.Body.setAngularVelocity(plat, 0);
+    }
+  }
+
+  private releaseDynamicPlatforms() {
+    for (let i = 0; i < this.platforms.length; i++) {
+      const plat = this.platforms[i];
+      const meta = this.platformMeta.get(i);
+      if (!meta || plat.isStatic) continue;
+      Matter.Body.setPosition(plat, { x: meta.x, y: meta.y });
+      Matter.Body.setAngle(plat, meta.angle);
+      Matter.Body.setVelocity(plat, {
+        x: meta.startSpeedX,
+        y: meta.startSpeedY,
+      });
+      Matter.Body.setAngularVelocity(plat, meta.startSpin);
     }
   }
 
@@ -678,6 +773,16 @@ export class BonkEngine {
     Matter.World.clear(this.world, false);
     Matter.Engine.clear(this.engine);
   }
+}
+
+function spawnAllowsTeam(spawn: SpawnDef, team: number): boolean {
+  // team: 0 spec, 1 FFA, 2 red, 3 blue, 4 green, 5 yellow
+  if (team <= 1) return spawn.ffa !== false;
+  if (team === 2) return spawn.red !== false;
+  if (team === 3) return spawn.blue !== false;
+  if (team === 4) return spawn.green !== false;
+  if (team === 5) return spawn.yellow !== false;
+  return true;
 }
 
 export function emptyInput(): InputState {

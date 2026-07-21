@@ -4,6 +4,7 @@ import {
   DEFAULT_SKIN,
   TEAM_COLORS,
   type GameMode,
+  type MapDef,
   type PlayerProfile,
   type RoomConfig,
   type Screen,
@@ -14,6 +15,10 @@ import { BonkEngine } from "./game/engine";
 import { GameRenderer } from "./game/renderer";
 import { InputManager } from "./game/input";
 import { botThink } from "./game/ai";
+import { mountEditor } from "./editor/mount";
+import { hydrateCustomMaps } from "./editor/storage";
+
+hydrateCustomMaps();
 
 const BOT_NAMES = [
   "bonkBot",
@@ -400,11 +405,16 @@ function makeLobby() {
     modeSel.value = state.room.mode;
     const fillMaps = () => {
       mapSel.innerHTML = "";
-      for (const m of MAPS) {
+      const pool = mapsForMode(state.room.mode);
+      const list = pool.length ? pool : MAPS;
+      for (const m of list) {
         const opt = document.createElement("option");
         opt.value = m.id;
         opt.textContent = `${m.name} (${m.author})`;
         mapSel.appendChild(opt);
+      }
+      if (!list.find((m) => m.id === state.room.mapId) && list[0]) {
+        state.room.mapId = list[0].id;
       }
       mapSel.value = state.room.mapId;
     };
@@ -556,191 +566,22 @@ function makeSkin() {
 }
 
 function makeEditor() {
-  const wrap = el("div", "editor-layout");
-  const tools = el("div", "panel");
-  tools.innerHTML = `
-    <h3 style="color:var(--cream);margin-bottom:8px">Map Editor</h3>
-    <p style="font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:10px">
-      Simplified editor. Place platforms & spawns, then playtest in Classic.
-    </p>
-    <div class="field"><label>Name</label><input id="n" value="My Map" /></div>
-    <div class="row" style="margin-bottom:8px">
-      <button class="btn-brown small" id="box">+ Box</button>
-      <button class="btn-brown small" id="circle">+ Circle</button>
-      <button class="btn-brown small" id="spawn">+ Spawn</button>
-    </div>
-    <div class="row">
-      <button class="btn-brown small danger" id="clear">Clear</button>
-      <button class="btn-brown small" id="play">Playtest</button>
-      <button class="btn-brown small" id="back">Back</button>
-    </div>
-  `;
-  const mid = el("div", "panel");
-  mid.style.padding = "0";
-  mid.style.overflow = "hidden";
-  const canvas = document.createElement("canvas");
-  canvas.width = 480;
-  canvas.height = 320;
-  canvas.style.width = "100%";
-  canvas.style.height = "100%";
-  canvas.style.cursor = "crosshair";
-  mid.appendChild(canvas);
-  const props = el("div", "panel");
-  props.innerHTML = `<h4 style="color:var(--cream)">Elements</h4><div id="els" style="font-size:12px;margin-top:8px"></div>`;
-  wrap.append(tools, mid, props);
-
-  type DraftShape = {
-    type: "box" | "circle" | "spawn";
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    r: number;
-    color: string;
-  };
-  let tool: "box" | "circle" | "spawn" = "box";
-  const shapes: DraftShape[] = [
-    { type: "box", x: 240, y: 220, w: 200, h: 28, r: 20, color: "#8fd14f" },
-    { type: "spawn", x: 200, y: 160, w: 0, h: 0, r: 8, color: "#e74c3c" },
-    { type: "spawn", x: 280, y: 160, w: 0, h: 0, r: 8, color: "#3498db" },
-  ];
-
-  const redraw = () => {
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#2c2c2c";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (const s of shapes) {
-      if (s.type === "spawn") {
-        ctx.beginPath();
-        ctx.fillStyle = s.color;
-        ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
-        ctx.fill();
-        continue;
-      }
-      ctx.fillStyle = s.color;
-      if (s.type === "circle") {
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillRect(s.x - s.w / 2, s.y - s.h / 2, s.w, s.h);
-      }
-    }
-    const els = props.querySelector("#els")!;
-    els.innerHTML = shapes
-      .map(
-        (s, i) =>
-          `<div style="margin:4px 0;padding:4px;background:#222;border-radius:3px">${i + 1}. ${s.type} @ ${Math.round(s.x)},${Math.round(s.y)}</div>`,
-      )
-      .join("");
-  };
-
+  const host = el("div", "editor-host");
   queueMicrotask(() => {
-    tools.querySelector("#box")!.addEventListener("click", () => (tool = "box"));
-    tools.querySelector("#circle")!.addEventListener("click", () => (tool = "circle"));
-    tools.querySelector("#spawn")!.addEventListener("click", () => (tool = "spawn"));
-    tools.querySelector("#clear")!.addEventListener("click", () => {
-      shapes.length = 0;
-      redraw();
+    mountEditor(host, {
+      author: state.profile.name,
+      onBack: () => setScreen("menu"),
+      onPlaytest: (map: MapDef) => {
+        state.room.mapId = map.id;
+        state.room.mode =
+          map.modeHint === "any" ? "classic" : (map.modeHint as GameMode);
+        state.room.bots = 3;
+        buildLobbyFromQuickPlay();
+        startMatchFromLobby();
+      },
     });
-    tools.querySelector("#back")!.addEventListener("click", () => setScreen("menu"));
-    tools.querySelector("#play")!.addEventListener("click", () => {
-      const customId = "custom-editor";
-      const existing = MAPS.findIndex((m) => m.id === customId);
-      const def = {
-        id: customId,
-        name: (tools.querySelector("#n") as HTMLInputElement).value || "My Map",
-        author: state.profile.name,
-        modeHint: "classic" as const,
-        width: 780,
-        height: 520,
-        gravity: { x: 0, y: 1.2 },
-        killY: 560,
-        killPadding: 50,
-        shapes: shapes
-          .filter((s) => s.type !== "spawn")
-          .map((s) =>
-            s.type === "circle"
-              ? {
-                  type: "circle" as const,
-                  x: (s.x / 480) * 780,
-                  y: (s.y / 320) * 520,
-                  r: s.r * 1.4,
-                  color: s.color,
-                  static: true,
-                }
-              : {
-                  type: "box" as const,
-                  x: (s.x / 480) * 780,
-                  y: (s.y / 320) * 520,
-                  w: s.w * 1.5,
-                  h: s.h * 1.4,
-                  color: s.color,
-                  static: true,
-                },
-          ),
-        spawns: shapes
-          .filter((s) => s.type === "spawn")
-          .map((s) => ({
-            x: (s.x / 480) * 780,
-            y: (s.y / 320) * 520,
-          })),
-      };
-      if (!def.spawns.length) {
-        def.spawns = [
-          { x: 300, y: 200 },
-          { x: 480, y: 200 },
-        ];
-      }
-      if (existing >= 0) MAPS[existing] = def;
-      else MAPS.push(def);
-      state.room.mapId = customId;
-      state.room.mode = "classic";
-      state.room.bots = 3;
-      buildLobbyFromQuickPlay();
-      startMatchFromLobby();
-    });
-    canvas.addEventListener("click", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
-      const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
-      if (tool === "box") {
-        shapes.push({
-          type: "box",
-          x,
-          y,
-          w: 120,
-          h: 24,
-          r: 20,
-          color: COLOR_PALETTE[Math.floor(Math.random() * 8)],
-        });
-      } else if (tool === "circle") {
-        shapes.push({
-          type: "circle",
-          x,
-          y,
-          w: 0,
-          h: 0,
-          r: 36,
-          color: COLOR_PALETTE[Math.floor(Math.random() * 8)],
-        });
-      } else {
-        shapes.push({
-          type: "spawn",
-          x,
-          y,
-          w: 0,
-          h: 0,
-          r: 8,
-          color: "#e74c3c",
-        });
-      }
-      redraw();
-    });
-    redraw();
   });
-
-  return wrap;
+  return host;
 }
 
 function makeSettings() {
