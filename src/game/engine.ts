@@ -157,10 +157,18 @@ export class BonkEngine {
       if (isRotate) {
         body.isStatic = false;
         Matter.Body.setDensity(body, shape.density ?? 0.0008);
+        const px = shape.pivotX ?? 0;
+        const py = shape.pivotY ?? 0;
+        const ang = opts.angle ?? 0;
+        const cos = Math.cos(ang);
+        const sin = Math.sin(ang);
         const pivot = Matter.Constraint.create({
-          pointA: { x: shape.x, y: shape.y },
+          pointA: {
+            x: shape.x + px * cos - py * sin,
+            y: shape.y + px * sin + py * cos,
+          },
           bodyB: body,
-          pointB: { x: 0, y: 0 },
+          pointB: { x: px, y: py },
           stiffness: 1,
           length: 0,
         });

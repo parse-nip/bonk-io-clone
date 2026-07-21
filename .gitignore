@@ -4,4 +4,6 @@ dist
 *.local
 .env
 .tmp-engine.mjs
+.tmp-editor-*.mjs
+.tmp-editor-entry.ts
 .tmp/

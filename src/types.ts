@@ -50,6 +50,9 @@ export interface ShapeDef {
   restitution?: number;
   fricPlayers?: boolean;
   rotate?: boolean;
+  /** Pivot offset from body center (local space). Used when `rotate` is true. */
+  pivotX?: number;
+  pivotY?: number;
   angularDamping?: number;
   startSpeedX?: number;
   startSpeedY?: number;

@@ -60,7 +60,7 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   // drag state
   let dragging: null | {
     id: string;
-    kind: "platform" | "spawn" | "capZone";
+    kind: "platform" | "spawn" | "capZone" | "pivot";
     ox: number;
     oy: number;
     sx: number;
@@ -179,7 +179,42 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     return Math.min(canvas.width / doc.width, canvas.height / doc.height) * 0.92;
   }
 
+  function platformPivotWorld(p: EditorPlatform) {
+    const rad = (p.angle * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+      x: p.x + p.pivotX * cos - p.pivotY * sin,
+      y: p.y + p.pivotX * sin + p.pivotY * cos,
+    };
+  }
+
+  function worldToPlatformLocal(p: EditorPlatform, wx: number, wy: number) {
+    const dx = wx - p.x;
+    const dy = wy - p.y;
+    const rad = (p.angle * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
+  }
+
+  function hitPivot(p: EditorPlatform, wx: number, wy: number): boolean {
+    if (p.moveType !== "rotate") return false;
+    const piv = platformPivotWorld(p);
+    return (wx - piv.x) ** 2 + (wy - piv.y) ** 2 <= 12 ** 2;
+  }
+
   function hitTest(wx: number, wy: number): EditorSelection {
+    // Prefer the selected rotate platform's pivot so it stays grabable on top.
+    if (selection?.kind === "platform") {
+      const selectedId = selection.id;
+      const selP = doc.platforms.find((p) => p.id === selectedId);
+      if (selP && hitPivot(selP, wx, wy)) return { kind: "platform", id: selP.id };
+    }
+    for (let i = doc.platforms.length - 1; i >= 0; i--) {
+      const p = doc.platforms[i];
+      if (hitPivot(p, wx, wy)) return { kind: "platform", id: p.id };
+    }
     for (let i = doc.capZones.length - 1; i >= 0; i--) {
       const z = doc.capZones[i];
       if (hitCap(z, wx, wy)) return { kind: "capZone", id: z.id };
@@ -260,8 +295,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       </div>
       <div class="ed-el-actions">
         <button class="ed-icon" id="add" title="Add">+</button>
-        <button class="ed-icon" id="del" title="Delete">🗑</button>
-        <button class="ed-icon" id="dup" title="Duplicate">⧉</button>
+        <button class="ed-icon danger" id="del" title="Delete selected (Del)">Delete</button>
+        <button class="ed-icon" id="dup" title="Duplicate (Ctrl+D)">⧉</button>
         <button class="ed-icon" id="up" title="Move Up">▲</button>
         <button class="ed-icon" id="down" title="Move Down">▼</button>
       </div>
@@ -278,46 +313,63 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
 
     const platList = elements.querySelector("#plat-list")!;
     for (const p of doc.platforms) {
-      const row = document.createElement("button");
+      const row = document.createElement("div");
       row.className = "ed-el-row";
       if (selection?.kind === "platform" && selection.id === p.id) row.classList.add("active");
       const tag = p.type === "circle" ? "C" : p.type === "polygon" ? "P" : "R";
-      row.innerHTML = `<span class="sw" style="background:${p.color}"></span><span>${escape(p.name)}</span><span class="tag">${tag}${p.noPhysics ? "·n" : ""}</span>`;
-      row.addEventListener("click", () => {
+      const move =
+        p.moveType === "rotate" ? "·piv" : p.moveType === "free" ? "·free" : "";
+      row.innerHTML = `<button class="ed-el-pick" type="button"><span class="sw" style="background:${p.color}"></span><span>${escape(p.name)}</span><span class="tag">${tag}${move}${p.noPhysics ? "·n" : ""}</span></button><button class="ed-el-del" type="button" title="Delete">✕</button>`;
+      row.querySelector(".ed-el-pick")!.addEventListener("click", () => {
         selection = { kind: "platform", id: p.id };
         showMapProps = false;
         infoText = `Platform: ${p.name}`;
         renderAll();
+      });
+      row.querySelector(".ed-el-del")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selection = { kind: "platform", id: p.id };
+        deleteSelected();
       });
       platList.appendChild(row);
     }
 
     const spawnList = elements.querySelector("#spawn-list")!;
     for (const s of doc.spawns) {
-      const row = document.createElement("button");
+      const row = document.createElement("div");
       row.className = "ed-el-row";
       if (selection?.kind === "spawn" && selection.id === s.id) row.classList.add("active");
-      row.innerHTML = `<span class="sw" style="background:${spawnColor(s)}"></span><span>Spawn</span><span class="tag">${Math.round(s.x)},${Math.round(s.y)}</span>`;
-      row.addEventListener("click", () => {
+      row.innerHTML = `<button class="ed-el-pick" type="button"><span class="sw" style="background:${spawnColor(s)}"></span><span>Spawn</span><span class="tag">${Math.round(s.x)},${Math.round(s.y)}</span></button><button class="ed-el-del" type="button" title="Delete">✕</button>`;
+      row.querySelector(".ed-el-pick")!.addEventListener("click", () => {
         selection = { kind: "spawn", id: s.id };
         showMapProps = false;
         infoText = "Spawn point";
         renderAll();
+      });
+      row.querySelector(".ed-el-del")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selection = { kind: "spawn", id: s.id };
+        deleteSelected();
       });
       spawnList.appendChild(row);
     }
 
     const capList = elements.querySelector("#cap-list")!;
     for (const z of doc.capZones) {
-      const row = document.createElement("button");
+      const row = document.createElement("div");
       row.className = "ed-el-row";
       if (selection?.kind === "capZone" && selection.id === z.id) row.classList.add("active");
-      row.innerHTML = `<span class="sw" style="background:#f1c40f"></span><span>${escape(z.name)}</span>`;
-      row.addEventListener("click", () => {
+      row.innerHTML = `<button class="ed-el-pick" type="button"><span class="sw" style="background:#f1c40f"></span><span>${escape(z.name)}</span></button><button class="ed-el-del" type="button" title="Delete">✕</button>`;
+      row.querySelector(".ed-el-pick")!.addEventListener("click", () => {
         selection = { kind: "capZone", id: z.id };
         showMapProps = false;
         infoText = `Capture zone: ${z.name}`;
         renderAll();
+      });
+      row.querySelector(".ed-el-del")!.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selection = { kind: "capZone", id: z.id };
+        deleteSelected();
       });
       capList.appendChild(row);
     }
@@ -375,16 +427,22 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   }
 
   function deleteSelected() {
-    if (!selection || selection.kind === "map") return;
+    if (!selection || selection.kind === "map") {
+      infoText = "Select something first, then Delete (or use ✕ on a list row).";
+      renderAll();
+      return;
+    }
     const id = selection.id;
-    if (selection.kind === "platform") {
+    const kind = selection.kind;
+    if (kind === "platform") {
       doc.platforms = doc.platforms.filter((p) => p.id !== id);
-    } else if (selection.kind === "spawn") {
+    } else if (kind === "spawn") {
       doc.spawns = doc.spawns.filter((p) => p.id !== id);
     } else {
       doc.capZones = doc.capZones.filter((p) => p.id !== id);
     }
     selection = null;
+    infoText = `Deleted ${kind}.`;
     pushHistory();
     renderAll();
   }
@@ -548,6 +606,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     num("pp-ssy", "startSpeedY");
     num("pp-spin", "startSpin");
     num("pp-adamp", "angularDamping");
+    num("pp-pivx", "pivotX");
+    num("pp-pivy", "pivotY");
     props.querySelector("#pp-move")?.addEventListener("change", (e) => {
       p.moveType = (e.target as HTMLSelectElement).value as MoveType;
       commit();
@@ -568,6 +628,12 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       p.fixedRotation = (e.target as HTMLInputElement).checked;
       commit();
     });
+    props.querySelector("#pp-piv-center")?.addEventListener("click", () => {
+      p.pivotX = 0;
+      p.pivotY = 0;
+      commit();
+    });
+    props.querySelector("#pp-delete")?.addEventListener("click", () => deleteSelected());
     const sw = props.querySelector("#pp-swatches");
     if (sw) {
       fillSwatches(sw, (c) => {
@@ -627,6 +693,7 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     chk("sp-blue", "blue");
     chk("sp-green", "green");
     chk("sp-yellow", "yellow");
+    props.querySelector("#sp-delete")?.addEventListener("click", () => deleteSelected());
   }
 
   function wireCapProps(z: EditorCapZone) {
@@ -656,6 +723,7 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
         commit();
       });
     }
+    props.querySelector("#cz-delete")?.addEventListener("click", () => deleteSelected());
   }
 
   function drawCanvas() {
@@ -733,9 +801,24 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     }
 
     if (p.moveType === "rotate") {
+      // Pivot marker in local space (draggable independently of body).
       ctx.strokeStyle = "#f1c40f";
+      ctx.fillStyle = "rgba(241,196,15,0.35)";
+      ctx.lineWidth = 2 / scale;
       ctx.beginPath();
-      ctx.arc(0, 0, 6 / scale, 0, Math.PI * 2);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(p.pivotX, p.pivotY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.pivotX, p.pivotY, 7 / scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Crosshair for grab affordance
+      ctx.beginPath();
+      ctx.moveTo(p.pivotX - 10 / scale, p.pivotY);
+      ctx.lineTo(p.pivotX + 10 / scale, p.pivotY);
+      ctx.moveTo(p.pivotX, p.pivotY - 10 / scale);
+      ctx.lineTo(p.pivotX, p.pivotY + 10 / scale);
       ctx.stroke();
     } else if (p.moveType === "free") {
       ctx.fillStyle = "#fff";
@@ -798,6 +881,19 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     showMapProps = false;
     if (hit && hit.kind === "platform") {
       const p = doc.platforms.find((x) => x.id === hit.id)!;
+      if (hitPivot(p, w.x, w.y)) {
+        dragging = {
+          id: p.id,
+          kind: "pivot",
+          ox: p.pivotX,
+          oy: p.pivotY,
+          sx: w.x,
+          sy: w.y,
+        };
+        infoText = `Drag pivot for ${p.name} (local ${Math.round(p.pivotX)}, ${Math.round(p.pivotY)})`;
+        renderAll();
+        return;
+      }
       // resize handle near right edge
       const dx = w.x - p.x;
       const dy = w.y - p.y;
@@ -827,7 +923,10 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
           sy: w.y,
         };
       }
-      infoText = `Platform: ${p.name}`;
+      infoText =
+        p.moveType === "rotate"
+          ? `Platform: ${p.name} — drag yellow crosshair to move pivot`
+          : `Platform: ${p.name}`;
     } else if (hit && hit.kind === "spawn") {
       const s = doc.spawns.find((x) => x.id === hit.id)!;
       dragging = { id: s.id, kind: "spawn", ox: s.x, oy: s.y, sx: w.x, sy: w.y };
@@ -837,7 +936,7 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       dragging = { id: z.id, kind: "capZone", ox: z.x, oy: z.y, sx: w.x, sy: w.y };
       infoText = `Capture zone: ${z.name}`;
     } else {
-      infoText = "Select an element or place a new one.";
+      infoText = "Select an element or place a new one. Del deletes · Ctrl+D duplicates";
     }
     renderAll();
   });
@@ -867,25 +966,35 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       const dx = w.x - dragging.sx;
       const dy = w.y - dragging.sy;
       if (Math.abs(dx) + Math.abs(dy) > 0.5) dragMoved = true;
-      const nx = snap(dragging.ox + dx);
-      const ny = snap(dragging.oy + dy);
-      if (dragging.kind === "platform") {
+      if (dragging.kind === "pivot") {
         const p = doc.platforms.find((x) => x.id === dragging!.id);
         if (p) {
-          p.x = nx;
-          p.y = ny;
-        }
-      } else if (dragging.kind === "spawn") {
-        const s = doc.spawns.find((x) => x.id === dragging!.id);
-        if (s) {
-          s.x = nx;
-          s.y = ny;
+          const local = worldToPlatformLocal(p, w.x, w.y);
+          p.pivotX = snap(local.x);
+          p.pivotY = snap(local.y);
+          infoText = `Pivot ${Math.round(p.pivotX)}, ${Math.round(p.pivotY)}`;
         }
       } else {
-        const z = doc.capZones.find((x) => x.id === dragging!.id);
-        if (z) {
-          z.x = nx;
-          z.y = ny;
+        const nx = snap(dragging.ox + dx);
+        const ny = snap(dragging.oy + dy);
+        if (dragging.kind === "platform") {
+          const p = doc.platforms.find((x) => x.id === dragging!.id);
+          if (p) {
+            p.x = nx;
+            p.y = ny;
+          }
+        } else if (dragging.kind === "spawn") {
+          const s = doc.spawns.find((x) => x.id === dragging!.id);
+          if (s) {
+            s.x = nx;
+            s.y = ny;
+          }
+        } else {
+          const z = doc.capZones.find((x) => x.id === dragging!.id);
+          if (z) {
+            z.x = nx;
+            z.y = ny;
+          }
         }
       }
       drawCanvas();
@@ -1051,11 +1160,12 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
       e.preventDefault();
       redo();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+      e.preventDefault();
+      duplicateSelected();
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       deleteSelected();
-    } else if (e.key === "d" || e.key === "D") {
-      duplicateSelected();
     } else if (e.key === "g" || e.key === "G") {
       view.grid = !view.grid;
       renderAll();
@@ -1262,6 +1372,15 @@ function platformPropsHtml(p: EditorPlatform): string {
     <label class="ed-check"><input type="checkbox" id="pp-nophys" ${p.noPhysics ? "checked" : ""}/> No Physics</label>
     <label class="ed-check"><input type="checkbox" id="pp-fricp" ${p.fricPlayers ? "checked" : ""}/> Fric Players</label>
     <label class="ed-check"><input type="checkbox" id="pp-fixrot" ${p.fixedRotation ? "checked" : ""}/> Fixed Rotation</label>
+    <details class="ed-section" ${p.moveType === "rotate" ? "open" : ""}>
+      <summary>Pivot</summary>
+      <p class="ed-hint">Yellow crosshair on the preview is the rotate pivot. Drag it, or set local offsets here.</p>
+      <div class="ed-grid2">
+        <div class="field"><label>Pivot X</label><input id="pp-pivx" type="number" value="${Math.round(p.pivotX)}" /></div>
+        <div class="field"><label>Pivot Y</label><input id="pp-pivy" type="number" value="${Math.round(p.pivotY)}" /></div>
+      </div>
+      <button class="btn-brown small" id="pp-piv-center" type="button">Center Pivot</button>
+    </details>
     <details class="ed-section" ${p.moveType !== "stationary" ? "open" : ""}>
       <summary>Movement</summary>
       <div class="ed-grid2">
@@ -1275,8 +1394,9 @@ function platformPropsHtml(p: EditorPlatform): string {
     <div class="row" style="margin-top:8px">
       <button class="btn-brown small" id="pp-dup-invx">Dup Invert X</button>
       <button class="btn-brown small" id="pp-dup-invy">Dup Invert Y</button>
+      <button class="btn-brown small" id="pp-delete" type="button">Delete</button>
     </div>
-    <p class="ed-hint">Shape type: ${p.type.toUpperCase()}</p>
+    <p class="ed-hint">Shape type: ${p.type.toUpperCase()} · Del deletes · Ctrl+D duplicates</p>
   `;
 }
 
@@ -1296,6 +1416,9 @@ function spawnPropsHtml(s: EditorSpawn): string {
     <label class="ed-check"><input type="checkbox" id="sp-blue" ${s.blue ? "checked" : ""}/> Blue</label>
     <label class="ed-check"><input type="checkbox" id="sp-green" ${s.green ? "checked" : ""}/> Green</label>
     <label class="ed-check"><input type="checkbox" id="sp-yellow" ${s.yellow ? "checked" : ""}/> Yellow</label>
+    <div class="row" style="margin-top:8px">
+      <button class="btn-brown small" id="sp-delete" type="button">Delete</button>
+    </div>
   `;
 }
 
@@ -1317,6 +1440,9 @@ function capPropsHtml(z: EditorCapZone): string {
       <div class="field"><label>Radius</label><input id="cz-r" type="number" value="${Math.round(z.r)}" /></div>
     </div>
     <p class="ed-hint">Capture zones are stored with the map (visual/editor support).</p>
+    <div class="row" style="margin-top:8px">
+      <button class="btn-brown small" id="cz-delete" type="button">Delete</button>
+    </div>
   `;
 }
 

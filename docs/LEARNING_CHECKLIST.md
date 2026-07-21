@@ -41,7 +41,19 @@ Use this to track understanding. Restate each item in your own words before mark
 - [ ] How do custom maps survive a refresh? (`localStorage` → `registerCustomMaps` → `MAPS`/`getMap`)
 - [ ] What did we intentionally *not* clone yet (joints / collide groups), and why?
 
+### 4b) Editor bugfix (this session) — restate before marking done
+
+- [ ] **Problem:** Leaving the Map Editor and coming back spawned a flood of objects. Why? (`mountEditor` returned a cleanup fn, but `makeEditor` never called it → stacked `window` keydown listeners; plain `D` duplicated on every stacked handler + key-repeat)
+- [ ] **Why that felt like “can’t delete”:** each Delete only removed one object from the *live* doc, while duplicates had already multiplied; list ✕ / props Delete were missing
+- [ ] **Pivot problem:** rotate mode drew a marker at the body center only — no `pivotX`/`pivotY`, so you couldn’t offset the hinge like real bonk
+- [ ] **Solution branch A (lifecycle):** `editorDispose` on every `render()` + dispose return from `mountEditor`
+- [ ] **Solution branch B (UX):** per-row ✕, Delete in props, labeled Delete button, duplicate moved to **Ctrl+D**
+- [ ] **Solution branch C (pivots):** local `pivotX`/`pivotY`, drag yellow crosshair, engine constraint uses offset `pointA`/`pointB`
+- [ ] **Impact:** drafts stop self-corrupting across visits; rotating maps can hinge off-center; deleting is one-click from the list
+
 **Quiz yourself:** If you duplicate a platform with “Dup Invert X”, what coordinate changes, and why is that useful for symmetric arenas?
+
+**Quiz (bugfix):** Why did cleaning up window listeners stop object spam even though the canvas DOM was already destroyed on leave?
 
 ## Open quizzes (answer before looking at code)
 
