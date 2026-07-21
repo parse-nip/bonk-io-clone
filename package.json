@@ -10,6 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:preview": "npm run build && wrangler deploy --temporary -c wrangler.preview.toml",
     "smoke": "node scripts/smoke.mjs",
     "test:movement": "node scripts/movement.mjs",
     "test:editor": "node scripts/editor-bugs.mjs",
@@ -19,10 +20,9 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "matter-js": "^0.20.0"
+    "planck": "^1.4.2"
   },
   "devDependencies": {
-    "@types/matter-js": "^0.19.8",
     "concurrently": "^9.2.0",
     "puppeteer-core": "^25.3.0",
     "typescript": "^5.8.3",

@@ -1,11 +1,9 @@
 /**
- * Headless movement regression for thruster-based bonk physics:
- * spawn freeze, horizontal/vertical thrusters, air control, fall-off.
+ * Headless movement regression for tutorial-tuned Box2D thrusters.
  */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Matter from "matter-js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -20,13 +18,32 @@ esbuild.buildSync({
   outfile: out,
 });
 
-const { BonkEngine, emptyInput } = await import(out);
+const { BonkEngine, emptyInput, PLAYER_RADIUS, PLAYER_MASS } = await import(out);
 
-function settle(eng, frames = 200) {
+/** Flat Arena platform top (center 360, half-height 18). */
+const FLAT_FLOOR_TOP = 360 - 18;
+const FLAT_REST_Y = FLAT_FLOOR_TOP - PLAYER_RADIUS;
+
+function settle(eng, frames = 240) {
   for (let i = 0; i < frames; i++) {
+    eng.setInput("p1", emptyInput());
+    if (eng.players[1]) eng.setInput("p2", emptyInput());
+    eng.update(1 / 60);
+  }
+}
+
+function plantOnFlat(eng, x = 390) {
+  const p = eng.players[0];
+  p.body.setPosition(x, FLAT_REST_Y);
+  p.body.setVelocity(0, 0);
+  p.body.setAngularVelocity(0);
+  for (let i = 0; i < 20; i++) {
     eng.setInput("p1", emptyInput());
     eng.update(1 / 60);
   }
+  p.body.setPosition(x, FLAT_REST_Y);
+  p.body.setVelocity(0, 0);
+  p.body.setAngularVelocity(0);
 }
 
 function drive(eng, input, frames = 90) {
@@ -53,7 +70,7 @@ function makeEngine(mapId = "flat") {
   return eng;
 }
 
-// 1) Stay pinned during Get Ready on Orbit (previously fell to death).
+// 1) Stay pinned during Get Ready on Orbit.
 const orbit = makeEngine("circles");
 for (let i = 0; i < 120; i++) {
   orbit.setInput("p1", { ...emptyInput(), right: true });
@@ -62,27 +79,38 @@ for (let i = 0; i < 120; i++) {
 const orbitAlive = orbit.players[0].alive;
 const orbitPinned =
   Math.abs(orbit.players[0].body.position.x - 200) < 1 &&
-  Math.abs(orbit.players[0].body.position.y - 200) < 1;
+  Math.abs(orbit.players[0].body.position.y - 262) < 1;
 
-// 2) Horizontal thrusters after BONK on flat arena.
+// 2) Horizontal thrusters — tutorial wall-clock pace (~200px / 1.5s).
 const flatRight = makeEngine("flat");
 settle(flatRight);
+plantOnFlat(flatRight, 390);
 const startX = flatRight.players[0].body.position.x;
 drive(flatRight, { ...emptyInput(), right: true });
 const dxRight = flatRight.players[0].body.position.x - startX;
 
 const flatLeft = makeEngine("flat");
 settle(flatLeft);
+plantOnFlat(flatLeft, 390);
 const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Up slows a fall (air control) but does not overcome gravity alone.
+// 3) Up slows a fall but does not overcome gravity.
+function clearHopAssist(p) {
+  p.wasGrounded = false;
+  p.prevUp = false;
+  p.jumpBuffer = 0;
+  p.coyote = 0;
+  p.pendingHop = null;
+  p.impactVy = 0;
+}
 const fallSlow = makeEngine("flat");
 settle(fallSlow);
-Matter.Body.setPosition(fallSlow.players[0].body, { x: 390, y: 180 });
-Matter.Body.setVelocity(fallSlow.players[0].body, { x: 0, y: 0 });
-for (let i = 0; i < 45; i++) {
+fallSlow.players[0].body.setPosition(390, 120);
+fallSlow.players[0].body.setVelocity(0, 0);
+clearHopAssist(fallSlow.players[0]);
+for (let i = 0; i < 30; i++) {
   fallSlow.setInput("p1", { ...emptyInput(), up: true });
   fallSlow.update(1 / 60);
 }
@@ -90,77 +118,80 @@ const yWithUp = fallSlow.players[0].body.position.y;
 
 const fallFast = makeEngine("flat");
 settle(fallFast);
-Matter.Body.setPosition(fallFast.players[0].body, { x: 390, y: 180 });
-Matter.Body.setVelocity(fallFast.players[0].body, { x: 0, y: 0 });
-for (let i = 0; i < 45; i++) {
+fallFast.players[0].body.setPosition(390, 120);
+fallFast.players[0].body.setVelocity(0, 0);
+clearHopAssist(fallFast.players[0]);
+for (let i = 0; i < 30; i++) {
   fallFast.setInput("p1", emptyInput());
   fallFast.update(1 / 60);
 }
 const yNoUp = fallFast.players[0].body.position.y;
-// Smaller Y = higher on screen; Up should keep you higher than free fall.
-const upSlowsFall = yWithUp < yNoUp - 5;
+const upSlowsFall = yWithUp < yNoUp - 8;
 
-// Drop onto the floor: restitution bounce still gets you air (bonk hop feel).
+// Jump / land-hop while holding Up (tutorial floor bounce feel).
 const bounce = makeEngine("flat");
 settle(bounce);
-const floorY = bounce.players[0].body.position.y;
-Matter.Body.setPosition(bounce.players[0].body, { x: 390, y: floorY - 100 });
-Matter.Body.setVelocity(bounce.players[0].body, { x: 0, y: 0 });
-let touchedFloor = false;
-let peakAfterLand = floorY;
-for (let i = 0; i < 160; i++) {
+plantOnFlat(bounce, 390);
+const jumpFloor = bounce.players[0].body.position.y;
+// Press Up on ground → hop.
+bounce.setInput("p1", { ...emptyInput(), up: true });
+bounce.update(1 / 60);
+let jumpPeak = jumpFloor;
+let leftGround = false;
+for (let i = 0; i < 90; i++) {
   bounce.setInput("p1", { ...emptyInput(), up: true });
   bounce.update(1 / 60);
   const y = bounce.players[0].body.position.y;
-  if (y >= floorY - 6) touchedFloor = true;
-  if (touchedFloor) peakAfterLand = Math.min(peakAfterLand, y);
+  jumpPeak = Math.min(jumpPeak, y);
+  if (y < jumpFloor - 20) leftGround = true;
 }
-const bounced = touchedFloor && floorY - peakAfterLand > 25;
+// Crisp hop (~45–70px): readable but not floaty hang-time.
+const bounced = leftGround && jumpFloor - jumpPeak > 40;
 
-// 3b) No sustained flight: hold Up mid-air — gravity still wins, you fall back.
+// No sustained flight.
 const noFly = makeEngine("flat");
 settle(noFly);
-Matter.Body.setPosition(noFly.players[0].body, { x: 390, y: 220 });
-Matter.Body.setVelocity(noFly.players[0].body, { x: 0, y: -4 });
+noFly.players[0].body.setPosition(390, 160);
+noFly.players[0].body.setVelocity(0, -20);
+clearHopAssist(noFly.players[0]);
 let peakY = noFly.players[0].body.position.y;
-for (let i = 0; i < 90; i++) {
+for (let i = 0; i < 60; i++) {
   noFly.setInput("p1", { ...emptyInput(), up: true });
   noFly.update(1 / 60);
   peakY = Math.min(peakY, noFly.players[0].body.position.y);
 }
 let endY = peakY;
-for (let i = 0; i < 150; i++) {
+for (let i = 0; i < 120; i++) {
   noFly.setInput("p1", { ...emptyInput(), up: true });
   noFly.update(1 / 60);
   endY = noFly.players[0].body.position.y;
 }
-// Despite holding Up the whole time, must fall back down from the peak.
-const cannotFly = endY > peakY + 40 && endY > 280;
+const cannotFly = endY > peakY + 40 && endY > 220;
 
-// 4) Down thruster increases downward speed while airborne.
+// Down thruster.
 const down = makeEngine("flat");
 settle(down);
-Matter.Body.setPosition(down.players[0].body, { x: 390, y: 250 });
-Matter.Body.setVelocity(down.players[0].body, { x: 0, y: -2 });
-for (let i = 0; i < 20; i++) {
+down.players[0].body.setPosition(390, 180);
+down.players[0].body.setVelocity(0, -5);
+for (let i = 0; i < 10; i++) {
   down.setInput("p1", emptyInput());
   down.update(1 / 60);
 }
 const midY = down.players[0].body.position.y;
 let maxY = midY;
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 25; i++) {
   down.setInput("p1", { ...emptyInput(), down: true });
   down.update(1 / 60);
   maxY = Math.max(maxY, down.players[0].body.position.y);
 }
-const pressedDown = maxY - midY > 10;
+const pressedDown = maxY - midY > 15;
 
-// 5) Full air control: horizontal thrust while airborne.
+// Air control.
 const air = makeEngine("flat");
 settle(air);
-Matter.Body.setPosition(air.players[0].body, { x: 390, y: 260 });
-Matter.Body.setVelocity(air.players[0].body, { x: 0, y: -3 });
-for (let i = 0; i < 15; i++) {
+air.players[0].body.setPosition(390, 160);
+air.players[0].body.setVelocity(0, -5);
+for (let i = 0; i < 8; i++) {
   air.setInput("p1", emptyInput());
   air.update(1 / 60);
 }
@@ -168,13 +199,12 @@ const airX0 = air.players[0].body.position.x;
 drive(air, { ...emptyInput(), left: true }, 60);
 const airDx = air.players[0].body.position.x - airX0;
 
-// 6) Fall off Flat Arena past the platform — no invisible full-width floor.
+// Fall off.
 const fall = makeEngine("flat");
 settle(fall);
 const fallP = fall.players[0];
-// Place just past the right edge of the 520-wide platform centered at 390.
-Matter.Body.setPosition(fallP.body, { x: 670, y: 300 });
-Matter.Body.setVelocity(fallP.body, { x: 2, y: 0 });
+fallP.body.setPosition(700, 200);
+fallP.body.setVelocity(5, 0);
 let fellPastFloor = false;
 let maxFallY = fallP.body.position.y;
 for (let i = 0; i < 180; i++) {
@@ -186,7 +216,27 @@ for (let i = 0; i < 180; i++) {
 }
 const fellOff = fellPastFloor && maxFallY > 400;
 
-// 7) Player–player collision transfers momentum (rigid body, not kinematic).
+// Coast / momentum in air: release thruster — velocity should persist
+// (tutorial has no speed cap / no air drag). Soft-caps used to kill this.
+// Stay well above the floor so platform friction isn't the scrubber.
+const coast = makeEngine("flat");
+settle(coast);
+const coastP = coast.players[0];
+coastP.body.setPosition(200, 80);
+coastP.body.setVelocity(90, 0);
+const coastVx = coastP.body.velocity.x;
+for (let i = 0; i < 20; i++) {
+  coast.setInput("p1", emptyInput());
+  coast.update(1 / 60);
+}
+const coastVxAfter = coastP.body.velocity.x;
+const stillAirborne = coastP.body.position.y + PLAYER_RADIUS < FLAT_FLOOR_TOP - 8;
+const coasts =
+  stillAirborne &&
+  coastVxAfter > coastVx * 0.9 &&
+  coastVxAfter > 70;
+
+// Collision momentum.
 function makeTwoPlayer() {
   const eng = new BonkEngine("classic", "flat", 3);
   eng.addPlayers([
@@ -218,52 +268,59 @@ const smash = makeTwoPlayer();
 settle(smash);
 const a = smash.players[0];
 const b = smash.players[1];
-Matter.Body.setPosition(a.body, { x: 300, y: 300 });
-Matter.Body.setPosition(b.body, { x: 360, y: 300 });
-Matter.Body.setVelocity(a.body, { x: 8, y: 0 });
-Matter.Body.setVelocity(b.body, { x: 0, y: 0 });
+a.body.setPosition(300, FLAT_REST_Y);
+b.body.setPosition(360, FLAT_REST_Y);
+a.body.setVelocity(40, 0);
+b.body.setVelocity(0, 0);
 const bX0 = b.body.position.x;
 let bGotHit = false;
 for (let i = 0; i < 45; i++) {
   smash.setInput("p1", emptyInput());
   smash.setInput("p2", emptyInput());
   smash.update(1 / 60);
-  if (b.body.velocity.x > 1.5 || b.body.position.x - bX0 > 8) {
+  if (b.body.velocity.x > 2 || b.body.position.x - bX0 > 8) {
     bGotHit = true;
     break;
   }
 }
 
-// 8) Heavy doubles mass and weakens thruster response vs light.
+// Heavy slower + ~2× mass.
 const heavyCmp = makeEngine("flat");
 settle(heavyCmp);
+plantOnFlat(heavyCmp, 390);
 const lightX0 = heavyCmp.players[0].body.position.x;
 drive(heavyCmp, { ...emptyInput(), right: true }, 60);
 const lightDx = heavyCmp.players[0].body.position.x - lightX0;
 
 const heavyEng = makeEngine("flat");
 settle(heavyEng);
+plantOnFlat(heavyEng, 390);
 const heavyX0 = heavyEng.players[0].body.position.x;
 drive(heavyEng, { ...emptyInput(), right: true, heavy: true }, 60);
 const heavyDx = heavyEng.players[0].body.position.x - heavyX0;
 const heavySlower = heavyDx < lightDx * 0.75;
-const heavyMassOk = Math.abs(heavyEng.players[0].body.mass - 2) < 0.05;
+const heavyMassOk =
+  Math.abs(heavyEng.players[0].body.mass - PLAYER_MASS * 2) < 0.15;
+const lightMassOk =
+  Math.abs(flatRight.players[0].body.mass - PLAYER_MASS) < 0.15;
 
 const result = {
   ok:
     orbitAlive &&
     orbitPinned &&
-    dxRight > 40 &&
-    dxLeft < -40 &&
+    dxRight > 80 &&
+    dxLeft < -80 &&
     upSlowsFall &&
     bounced &&
     cannotFly &&
     pressedDown &&
-    airDx < -20 &&
+    airDx < -30 &&
     fellOff &&
     bGotHit &&
+    coasts &&
     heavySlower &&
     heavyMassOk &&
+    lightMassOk &&
     !flatRight.players[0].body.isStatic,
   orbitAlive,
   orbitPinned,
@@ -273,7 +330,7 @@ const result = {
   yWithUp: +yWithUp.toFixed(1),
   yNoUp: +yNoUp.toFixed(1),
   bounced,
-  bouncePeakPx: +(floorY - peakAfterLand).toFixed(1),
+  bouncePeakPx: +(jumpFloor - jumpPeak).toFixed(1),
   cannotFly,
   peakY: +peakY.toFixed(1),
   noFlyEndY: +endY.toFixed(1),
@@ -284,11 +341,16 @@ const result = {
   maxFallY: +maxFallY.toFixed(1),
   fallAlive: fallP.alive,
   bGotHit,
+  coasts,
+  coastVx: +coastVx.toFixed(1),
+  coastVxAfter: +coastVxAfter.toFixed(1),
   lightDx: +lightDx.toFixed(1),
   heavyDx: +heavyDx.toFixed(1),
   heavySlower,
-  heavyMass: +heavyEng.players[0].body.mass.toFixed(2),
+  heavyMass: +heavyEng.players[0].body.mass.toFixed(3),
+  lightMass: +flatRight.players[0].body.mass.toFixed(3),
   playerStatic: flatRight.players[0].body.isStatic,
+  playerRadius: PLAYER_RADIUS,
 };
 
 console.log(JSON.stringify(result));

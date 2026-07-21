@@ -1,0 +1,30 @@
+# Temporary / preview deploy — no production custom domain, no account pin.
+# Usage: npm run build && npx wrangler deploy --temporary -c wrangler.preview.toml
+name = "bonk-preview"
+main = "worker/index.ts"
+compatibility_date = "2026-07-20"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+workers_dev = true
+preview_urls = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/ws"]
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "GameRoom"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDirectory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom", "LobbyDirectory"]
+
+[observability]
+enabled = true

@@ -27,16 +27,20 @@ Research window: ~20 minutes before implementation (2026-07-19).
 - **Disc fixture (client):** density ≈ `0.001337`, restitution ≈ `0.95`; body linearDamping ≈ `0.01`
 - Circle hitboxes (skin does not change collision); player radius in map units = `ppm` (default 12)
 - Continuous thrusters on arrow keys (all 4 directions), not grounded jump
+- OSU tutorial model (feel reference): `mass=3`, `g=9.8`, `|F|=15`, `dt=0.1`, bounce `vy=-vy`, **no speed cap** — momentum is the lesson (`Fnety = Fy - mass*g`)
 - High platform friction relative to real world; player–player bounce is energetic
-- Heavy: ~2× mass, reduced acceleration; activate ~200–300 ms before contact, release after
+- Heavy: ~2× mass, reduced acceleration; activate ~200–300 ms before contact, release after (wiki: bash farther, harder to push, less maneuverable)
 - Walls/platforms ≈ infinite mass when stationary; bounce preserves more energy than soft materials
 - Map scale via `ppm` (pixels-per-meter style); default blank map `ppm: 12`
 - Platform defaults from map format: friction ~0.3, restitution ~0.8, density ~0.3
 
-### Clone mapping (Matter.js)
-- Pixel-ish map coords (~780×520) with Matter `gravity.scale = 0.001`
-- `applyForce` thrusters every frame; soft speed caps
-- Do **not** use OSU tutorial kinematic integrator in the live engine (invisible floor + dead knockback)
+### Clone mapping (Planck.js / Box2D) — updated 2026-07-21
+- Live engine uses **tutorial-scale** mass/radius (3 / 25) + map gravity ≈ **360** so wall-clock pace matches the sketch (its `dt=0.1` @ 60fps is ~6× time)
+- Thruster/weight ≈ **0.51** on every axis; **no horizontal speed soft-cap** (coasts / knockback momentum)
+- Disc: restitution ~0.94, linearDamping 0.01, angularDamping 3.4; Heavy = 2× density
+- Grounded hop after `world.step` (Box2D resting contacts won’t do tutorial `vy=-vy` alone)
+- Do **not** use the OSU kinematic integrator in the live loop (invisible full-width floor + dead knockback)
+- HTML5 client still confirmed: world gravity `(0, 20)`, fixture density `0.001337`, restitution `0.95` in `js/alpha2s.js`
 
 ## Input bitfield (from DemystifyBonk)
 `Left=1, Right=2, Up=4, Down=8, Heavy=16, Special=32`
@@ -103,7 +107,7 @@ True bonk.io is server-authoritative WebSocket rooms. For this repo:
 - Same round/score flow as real game
 
 ## Design decisions for the clone
-- **Matter.js** instead of raw Box2D WASM: faster to ship, same circle/rect/joint primitives, tunable to feel close
+- **Planck.js (Box2D)** — same family as HTML5 bonk’s box2dweb / Box2DFlash stack; constants taken from the live client
 - **Vanilla TS + Vite + Canvas**: matches HTML5 bonk stack simplicity; no React cards/dashboard chrome
 - **Faithful brown/charcoal UI**, not a modern redesign
 - Scope: full Classic feel + Arrows + Grapple + skin color editor + basic map editor + lobbies; not full community map DB / ranked leagues

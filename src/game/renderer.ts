@@ -1,5 +1,6 @@
-import type Matter from "matter-js";
 import type { BonkEngine, EnginePlayer } from "./engine";
+import { PLAYER_RADIUS } from "./engine";
+import type { PhysBody } from "./physBody";
 
 export class GameRenderer {
   canvas: HTMLCanvasElement;
@@ -46,8 +47,7 @@ export class GameRenderer {
 
     // platforms
     for (const body of engine.platforms) {
-      const color =
-        (body as Matter.Body & { fillColor?: string }).fillColor || "#8fd14f";
+      const color = body.fillColor || "#8fd14f";
       this.drawBody(body, color, true);
     }
 
@@ -136,7 +136,7 @@ export class GameRenderer {
   }
 
   private drawBody(
-    body: Matter.Body,
+    body: PhysBody,
     color: string,
     rounded: boolean,
   ) {
@@ -200,7 +200,7 @@ export class GameRenderer {
   private drawPlayer(p: EnginePlayer, isLocal: boolean) {
     const ctx = this.ctx;
     const { x, y } = p.body.position;
-    const r = 18;
+    const r = PLAYER_RADIUS;
     const heavy = p.input.heavy;
 
     if (heavy) {
