@@ -177,7 +177,7 @@ export function blankDocument(author: string): EditorDocument {
     width: 780,
     height: 520,
     gravityX: 0,
-    gravityY: 350,
+    gravityY: 420,
     killY: 560,
     killPadding: 50,
     platforms: [

@@ -22,10 +22,10 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 ## 3) The solution in this clone
 - [ ] Physics engine is **Planck.js** (Box2D), not Matter.js.
 - [ ] `applyForceToCenter` thrusters on Left/Right/Up/Down every frame.
-- [ ] Tuned to **OSU bonk_v6 tutorial wall-clock feel**: mass **3**, radius **25**, thrust/weight = **15/(3·9.8)≈0.51**, map gravity ≈ **350** (because tutorial `dt=0.1` at 60fps is ~6× time-accelerated — raw `g=9.8` felt sluggish in real-time Box2D).
-- [ ] Disc restitution **0.95**, dampings **0.01 / 3.4** (HTML5 client).
+- [ ] Tuned to **OSU bonk_v6 tutorial wall-clock feel**: mass **3**, radius **25**, map gravity ≈ **420** (tutorial `dt=0.1` at 60fps is ~6× time-accelerated — raw client `g=20` felt sluggish in real-time).
+- [ ] **Horizontal** thruster ≈ **0.82×** weight (snappy strafe); **vertical** ≈ **0.32×** (Up only softens falls — near-1.0 vertical thrust was the float hang).
+- [ ] Grounded hop after `world.step` + clear stale contacts; `Settings.maxTranslation` raised (pixel worlds need this — default `2` clamped `|v|` to **120** at 60Hz and crushed jumps).
 - [ ] Heavy = **2× density**; weaker thruster vs light weight.
-- [ ] `THRUST_VS_WEIGHT < 1` so Up **cannot hover/fly**.
 - [ ] Off a platform edge → real freefall past `killY` → elimination.
 - [ ] Snapshots carry **Box2D** velocities (needed for knockback online).
 - [ ] `PhysBody` adapts Planck bodies for renderer / tests.
@@ -41,3 +41,5 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 3. Why must snapshots send body velocity instead of zeros after a kinematic step?
 4. What Box2D gravity vector does the real HTML5 client hard-code?
 5. Why does disc restitution `0.95` make `settle()` need many frames before tests plant the player?
+6. At 60 Hz with `maxTranslation = 2`, what is the max `|v|` Box2D allows? What happens to a `JUMP_SPEED` of 180?
+7. Why is vertical thruster weaker than horizontal in this clone?

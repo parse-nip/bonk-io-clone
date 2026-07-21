@@ -135,7 +135,8 @@ for (let i = 0; i < 90; i++) {
   jumpPeak = Math.min(jumpPeak, y);
   if (y < jumpFloor - 20) leftGround = true;
 }
-const bounced = leftGround && jumpFloor - jumpPeak > 60;
+// Crisp hop (~45–70px): readable but not floaty hang-time.
+const bounced = leftGround && jumpFloor - jumpPeak > 40;
 
 // No sustained flight.
 const noFly = makeEngine("flat");

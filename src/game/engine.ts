@@ -3,7 +3,9 @@ import {
   Vec2,
   RevoluteJoint,
   DistanceJoint,
+  Settings,
   type Joint,
+  type Contact,
 } from "planck";
 import type {
   GameMode,
@@ -38,7 +40,12 @@ import {
  *
  * Box2D still owns collisions (disc restitution / damping from the HTML5 client).
  * Canvas Y+ is down, so +Y gravity.
+ *
+ * Pixel-scale gotcha: Box2D caps per-step travel at Settings.maxTranslation
+ * (default 2). At 60 Hz that clamps |v| to 120 — which silently crushed jumps
+ * (vy=-180 → -120) and felt floaty/mushy. Raise it for px/s gameplay speeds.
  */
+Settings.maxTranslation = 12;
 export const PLAYER_RADIUS = 25;
 /** Target light mass from the tutorial (`mass = 3.0`). */
 export const PLAYER_MASS = 3;
@@ -46,38 +53,47 @@ export const PLAYER_MASS = 3;
 const DISC_DENSITY = PLAYER_MASS / (Math.PI * PLAYER_RADIUS * PLAYER_RADIUS);
 /** Heavy doubles fixture density (wiki / client behaviour). */
 const HEAVY_DENSITY = DISC_DENSITY * 2;
-/** Disc restitution from HTML5 client fixture (~0.95). */
-const PLAYER_RESTITUTION = 0.95;
+/**
+ * Slightly under client ~0.95 — full 0.95 + high g reads as a trampoline.
+ */
+const PLAYER_RESTITUTION = 0.82;
 /** Low player friction; platforms carry most sliding resistance. */
-const PLAYER_FRICTION = 0.1;
-const PLAYER_LINEAR_DAMPING = 0.01;
+const PLAYER_FRICTION = 0.12;
+/** A bit of air drag so hops don't hang. */
+const PLAYER_LINEAR_DAMPING = 0.04;
 const PLAYER_ANGULAR_DAMPING = 3.4;
 /**
- * Up/strafe thruster vs light weight. Must stay < 1 or holding Up flies.
- * Higher than raw tutorial 15/(3*9.8)≈0.51 so hops read on g≈350 maps;
- * still below weight so you bounce, not hover.
+ * Strafe thruster vs light weight. Strong for snappy left/right; must stay < 1.
  */
-const THRUST_VS_WEIGHT = 0.88;
-/** Heavy thruster vs light weight — much weaker while heavy. */
-const HEAVY_THRUST_VS_WEIGHT = 0.32;
+const HORIZONTAL_THRUST_VS_WEIGHT = 0.82;
+/**
+ * Up/Down thruster vs weight — kept well below strafe so holding Up only
+ * softens a fall (never near-cancels gravity into a float hang).
+ */
+const VERTICAL_THRUST_VS_WEIGHT = 0.32;
+/** Heavy thruster vs light weight. */
+const HEAVY_HORIZONTAL_THRUST_VS_WEIGHT = 0.3;
+const HEAVY_VERTICAL_THRUST_VS_WEIGHT = 0.12;
 /**
  * Zero-g thruster ≈ tutorial-scale horizontal accel * mass (a≈178 → F≈534).
  */
 const ZERO_G_MOVE_FORCE = 534;
 const ZERO_G_HEAVY_MOVE_FORCE = 190;
 /**
- * Soft horizontal cap only — never clamp vertical or bounce/jump dies under
- * high gravity.
+ * Soft horizontal cap only — never clamp vertical or bounce/jump dies.
  */
 const MAX_SPEED_X = 160;
 const HEAVY_MAX_SPEED_X = 100;
 /**
- * Tutorial floor bounce (`vy = -vy`) doesn't happen the same way in Box2D
- * resting contact. When Up is held and we land / press Up on ground, impart
- * this upward speed (Y+ is down → negative).
+ * Grounded hop impulse (Y+ down → negative). Crisp pop; gravity + weak Up
+ * thruster bring you down fast so it doesn't float.
  */
-const JUMP_SPEED = 130;
-const HEAVY_JUMP_SPEED = 85;
+const JUMP_SPEED = 200;
+const HEAVY_JUMP_SPEED = 130;
+/** Lift the disc clear of the floor when hopping so we aren't overlapping. */
+const HOP_CLEARANCE_PX = 4;
+/** Only auto land-bounce when impact is meaningful (not every soft settle). */
+const LAND_BOUNCE_MIN_IMPACT = 40;
 /** Bonk blank-map fixture defaults (DemystifyBonk / client). */
 const DEFAULT_PLATFORM_DENSITY = 0.3;
 const DEFAULT_PLATFORM_FRICTION = 0.3;
@@ -106,6 +122,10 @@ export interface EnginePlayer {
   /** Prior-frame grounded flag for bunny-hop / land bounce. */
   wasGrounded: boolean;
   prevUp: boolean;
+  /** Max downward speed since last grounded (for land-bounce threshold). */
+  impactVy: number;
+  /** Hop speed queued during control; applied after world.step. */
+  pendingHop: number | null;
 }
 
 export interface ArrowProj {
@@ -383,6 +403,8 @@ export class BonkEngine {
         score: 0,
         wasGrounded: false,
         prevUp: false,
+        impactVy: 0,
+        pendingHop: null,
       };
     });
   }
@@ -481,6 +503,26 @@ export class BonkEngine {
     this.world.step(step, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
     this.world.clearForces();
 
+    // Apply hops after the step, then destroy stale floor contacts. Box2D
+    // runs the velocity solver BEFORE updating contacts, so leftover ground
+    // manifolds would otherwise clamp most of the upward velocity next frame
+    // (that read as a mushy / floaty hop).
+    if (!freezing) {
+      for (const p of this.players) {
+        if (!p.alive || p.pendingHop == null) continue;
+        const hop = p.pendingHop;
+        p.pendingHop = null;
+        const pos = p.body.position;
+        const v = p.body.velocity;
+        p.body.setPosition(pos.x, pos.y - HOP_CLEARANCE_PX);
+        p.body.setVelocity(v.x, -hop);
+        this.destroyBodyContacts(p.body);
+        p.body.raw.setAwake(true);
+        p.wasGrounded = false;
+        p.impactVy = 0;
+      }
+    }
+
     if (this.roundActive) {
       this.checkEliminations();
       this.checkFootball();
@@ -535,18 +577,36 @@ export class BonkEngine {
     }
   }
 
-  /** Thruster magnitude: always below weight when gravity > 0 (no flying). */
-  private thrusterForce(heavy: boolean): number {
+  /** Drop every contact edge on a body (safe after a teleport / hop). */
+  private destroyBodyContacts(body: PhysBody) {
+    const world = this.world as World & {
+      destroyContact(contact: Contact): void;
+    };
+    let edge = body.raw.getContactList();
+    while (edge) {
+      const contact = edge.contact;
+      edge = edge.next;
+      world.destroyContact(contact);
+    }
+  }
+
+  /** Thruster magnitudes: horizontal snappy, vertical weaker (less float). */
+  private thrusterForces(heavy: boolean): { hx: number; hy: number } {
     const gy = Math.abs(this.map.gravity.y);
     if (gy < 1e-6) {
-      return heavy ? ZERO_G_HEAVY_MOVE_FORCE : ZERO_G_MOVE_FORCE;
+      const f = heavy ? ZERO_G_HEAVY_MOVE_FORCE : ZERO_G_MOVE_FORCE;
+      return { hx: f, hy: f };
     }
-    // Light disc mass from density × area (matches ResetMassData).
     const lightMass = DISC_DENSITY * Math.PI * PLAYER_RADIUS * PLAYER_RADIUS;
     const lightWeight = lightMass * gy;
-    const force =
-      lightWeight * (heavy ? HEAVY_THRUST_VS_WEIGHT : THRUST_VS_WEIGHT);
-    return this.mode === "football" ? force * 1.25 : force;
+    const hx =
+      lightWeight *
+      (heavy ? HEAVY_HORIZONTAL_THRUST_VS_WEIGHT : HORIZONTAL_THRUST_VS_WEIGHT);
+    const hy =
+      lightWeight *
+      (heavy ? HEAVY_VERTICAL_THRUST_VS_WEIGHT : VERTICAL_THRUST_VS_WEIGHT);
+    const scale = this.mode === "football" ? 1.25 : 1;
+    return { hx: hx * scale, hy: hy * scale };
   }
 
   private applyPlayerControl(p: EnginePlayer, dt: number) {
@@ -558,8 +618,11 @@ export class BonkEngine {
       p.body.setDensity(targetDensity);
     }
 
-    const forceScale = this.thrusterForce(heavy);
+    const { hx, hy } = this.thrusterForces(heavy);
     const grounded = this.isPlayerGrounded(p);
+    if (!grounded) {
+      p.impactVy = Math.max(p.impactVy, p.body.velocity.y);
+    }
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
@@ -570,7 +633,7 @@ export class BonkEngine {
         p.charge = Math.min(1, p.charge + dt * 0.9);
         if (input.left) p.aimAngle -= dt * 2.8;
         if (input.right) p.aimAngle += dt * 2.8;
-        this.applyThrusterForce(p, forceScale, {
+        this.applyThrusterForce(p, hx, hy, {
           horizontal: false,
           vertical: true,
         });
@@ -580,10 +643,10 @@ export class BonkEngine {
         }
         p.aiming = false;
         p.charge = 0;
-        this.applyThrusterForce(p, forceScale);
+        this.applyThrusterForce(p, hx, hy);
       }
     } else if (this.mode === "grapple") {
-      this.applyThrusterForce(p, forceScale);
+      this.applyThrusterForce(p, hx, hy);
 
       if (input.special) {
         if (!p.grapple) this.attachGrapple(p);
@@ -605,7 +668,7 @@ export class BonkEngine {
         }
       }
     } else if (this.mode === "football") {
-      this.applyThrusterForce(p, forceScale);
+      this.applyThrusterForce(p, hx, hy);
       if (heavy && this.ball) {
         const d = distBetween(p.body, this.ball);
         if (d < PLAYER_RADIUS + 22) {
@@ -616,22 +679,24 @@ export class BonkEngine {
         }
       }
     } else {
-      this.applyThrusterForce(p, forceScale);
+      this.applyThrusterForce(p, hx, hy);
     }
 
-    // Tutorial-style floor hop: bounce on land / Up press while grounded.
-    // (Box2D resting contacts don't mirror the sketch's `vy = -vy`.)
+    // Queue grounded hop — applied AFTER world.step so the contact solver
+    // can't immediately cancel the upward velocity.
+    p.pendingHop = null;
     if (input.up && grounded && this.map.gravity.y > 1e-6) {
       const justLanded = !p.wasGrounded;
-      const upPressed = input.up && !p.prevUp;
-      if (justLanded || upPressed) {
+      const upPressed = !p.prevUp;
+      const hardLanding = justLanded && p.impactVy >= LAND_BOUNCE_MIN_IMPACT;
+      if (upPressed || hardLanding) {
         const hop = heavy ? HEAVY_JUMP_SPEED : JUMP_SPEED;
-        const v = p.body.velocity;
-        if (v.y > -hop * 0.55) {
-          p.body.setVelocity(v.x, -hop);
+        if (p.body.velocity.y > -hop * 0.55) {
+          p.pendingHop = hop;
         }
       }
     }
+    if (grounded && p.pendingHop == null) p.impactVy = 0;
     p.wasGrounded = grounded;
     p.prevUp = input.up;
 
@@ -662,12 +727,14 @@ export class BonkEngine {
   }
 
   /**
-   * Continuous directional thrusters from input (Box2D ApplyForceToCenter).
-   * World gravity already adds weight each step.
+   * Continuous directional thrusters (Box2D ApplyForceToCenter).
+   * Horizontal and vertical use separate magnitudes so strafe stays snappy
+   * without Up cancelling gravity into a float.
    */
   private applyThrusterForce(
     p: EnginePlayer,
-    forceScale: number,
+    forceX: number,
+    forceY: number,
     axes: { horizontal?: boolean; vertical?: boolean } = {
       horizontal: true,
       vertical: true,
@@ -679,18 +746,18 @@ export class BonkEngine {
 
     if (axes.horizontal !== false) {
       if (input.left) {
-        fx -= forceScale;
+        fx -= forceX;
         p.facing = -1;
       }
       if (input.right) {
-        fx += forceScale;
+        fx += forceX;
         p.facing = 1;
       }
     }
     if (axes.vertical !== false) {
       // Y+ is down (canvas / bonk client), so Up applies a negative force.
-      if (input.up) fy -= forceScale;
-      if (input.down) fy += forceScale;
+      if (input.up) fy -= forceY;
+      if (input.down) fy += forceY;
     }
 
     if (fx !== 0 || fy !== 0) {
