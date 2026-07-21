@@ -27,11 +27,18 @@ const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
 /** Real bonk: heavy ~doubles mass (wiki / client). */
 const HEAVY_MASS = 2;
-// Continuous thruster force (all 4 directions). Slightly above typical map
-// weight (mass * gravity.y * 0.001 ≈ 0.0012) so Up can leave the floor.
-const MOVE_FORCE = 0.00138;
-/** Heavy keeps thrusting but much weaker (maneuverability cost). */
-const HEAVY_MOVE_FORCE = 0.00048;
+/** Matter gravity scale — weight force = mass * |gy| * this. */
+const GRAVITY_SCALE = 0.001;
+/**
+ * Thruster as a fraction of *light* body weight. Must stay < 1 or holding Up
+ * lets you fly (real bonk / OSU tutorial: thrust < weight; you bounce, not hover).
+ */
+const THRUST_VS_WEIGHT = 0.78;
+/** Heavy thruster vs light weight — much weaker acceleration while heavy. */
+const HEAVY_THRUST_VS_WEIGHT = 0.28;
+/** Absolute thruster when map gravity is 0 (Football). */
+const ZERO_G_MOVE_FORCE = 0.0011;
+const ZERO_G_HEAVY_MOVE_FORCE = 0.0004;
 const MAX_SPEED = 11;
 const HEAVY_MAX_SPEED = 7.2;
 /** Disc restitution from bonk client discbody fixture (~0.95). */
@@ -112,7 +119,11 @@ export class BonkEngine {
     this.width = this.map.width;
     this.height = this.map.height;
     this.engine = Matter.Engine.create({
-      gravity: { x: this.map.gravity.x, y: this.map.gravity.y, scale: 0.001 },
+      gravity: {
+        x: this.map.gravity.x,
+        y: this.map.gravity.y,
+        scale: GRAVITY_SCALE,
+      },
     });
     this.world = this.engine.world;
     this.buildMap();
@@ -459,6 +470,18 @@ export class BonkEngine {
     }
   }
 
+  /** Thruster magnitude: always below weight when gravity > 0 (no flying). */
+  private thrusterForce(heavy: boolean): number {
+    const gy = Math.abs(this.map.gravity.y);
+    if (gy < 1e-6) {
+      return heavy ? ZERO_G_HEAVY_MOVE_FORCE : ZERO_G_MOVE_FORCE;
+    }
+    const lightWeight = BASE_MASS * gy * GRAVITY_SCALE;
+    const force =
+      lightWeight * (heavy ? HEAVY_THRUST_VS_WEIGHT : THRUST_VS_WEIGHT);
+    return this.mode === "football" ? force * 1.25 : force;
+  }
+
   private applyPlayerControl(p: EnginePlayer, dt: number) {
     const { input } = p;
     const heavy = input.heavy;
@@ -467,11 +490,8 @@ export class BonkEngine {
       Matter.Body.setMass(p.body, targetMass);
     }
 
-    // Continuous thruster forces on arrow keys (Fx left/right, Fy up/down).
-    // Gravity stays in Matter; net vertical is F_thrust + weight.
-    const forceScale =
-      (heavy ? HEAVY_MOVE_FORCE : MOVE_FORCE) *
-      (this.mode === "football" ? 1.25 : 1);
+    // Continuous thrusters; Up cannot overcome weight → bounce, don't fly.
+    const forceScale = this.thrusterForce(heavy);
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {

@@ -22,6 +22,7 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 - [ ] Map gravity on: `gravity: { x, y, scale: 0.001 }` from the map def.
 - [ ] Disc-like player: restitution **0.95**, low friction, air drag ~0.01.
 - [ ] `HEAVY_MASS = 2× BASE_MASS`; weaker `HEAVY_MOVE_FORCE`.
+- [ ] `THRUST_VS_WEIGHT < 1` so Up **cannot hover/fly** — bounce with Up/Down like real bonk.
 - [ ] Soft speed caps keep continuous thrust readable.
 - [ ] Off a platform edge → real freefall past `killY` → elimination.
 - [ ] Snapshots carry **Matter** `body.velocity` (needed for knockback online).

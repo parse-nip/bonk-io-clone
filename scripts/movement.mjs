@@ -77,23 +77,73 @@ const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Up thruster lifts off the floor.
-const up = makeEngine("flat");
-settle(up);
-const floorY = up.players[0].body.position.y;
-let minY = floorY;
-for (let i = 0; i < 90; i++) {
-  up.setInput("p1", { ...emptyInput(), up: true });
-  up.update(1 / 60);
-  minY = Math.min(minY, up.players[0].body.position.y);
+// 3) Up slows a fall (air control) but does not overcome gravity alone.
+const fallSlow = makeEngine("flat");
+settle(fallSlow);
+Matter.Body.setPosition(fallSlow.players[0].body, { x: 390, y: 180 });
+Matter.Body.setVelocity(fallSlow.players[0].body, { x: 0, y: 0 });
+for (let i = 0; i < 45; i++) {
+  fallSlow.setInput("p1", { ...emptyInput(), up: true });
+  fallSlow.update(1 / 60);
 }
-const lifted = floorY - minY > 15;
+const yWithUp = fallSlow.players[0].body.position.y;
+
+const fallFast = makeEngine("flat");
+settle(fallFast);
+Matter.Body.setPosition(fallFast.players[0].body, { x: 390, y: 180 });
+Matter.Body.setVelocity(fallFast.players[0].body, { x: 0, y: 0 });
+for (let i = 0; i < 45; i++) {
+  fallFast.setInput("p1", emptyInput());
+  fallFast.update(1 / 60);
+}
+const yNoUp = fallFast.players[0].body.position.y;
+// Smaller Y = higher on screen; Up should keep you higher than free fall.
+const upSlowsFall = yWithUp < yNoUp - 5;
+
+// Drop onto the floor: restitution bounce still gets you air (bonk hop feel).
+const bounce = makeEngine("flat");
+settle(bounce);
+const floorY = bounce.players[0].body.position.y;
+Matter.Body.setPosition(bounce.players[0].body, { x: 390, y: floorY - 100 });
+Matter.Body.setVelocity(bounce.players[0].body, { x: 0, y: 0 });
+let touchedFloor = false;
+let peakAfterLand = floorY;
+for (let i = 0; i < 160; i++) {
+  bounce.setInput("p1", { ...emptyInput(), up: true });
+  bounce.update(1 / 60);
+  const y = bounce.players[0].body.position.y;
+  if (y >= floorY - 6) touchedFloor = true;
+  if (touchedFloor) peakAfterLand = Math.min(peakAfterLand, y);
+}
+const bounced = touchedFloor && floorY - peakAfterLand > 25;
+
+// 3b) No sustained flight: hold Up mid-air — gravity still wins, you fall back.
+const noFly = makeEngine("flat");
+settle(noFly);
+Matter.Body.setPosition(noFly.players[0].body, { x: 390, y: 220 });
+Matter.Body.setVelocity(noFly.players[0].body, { x: 0, y: -4 });
+let peakY = noFly.players[0].body.position.y;
+for (let i = 0; i < 90; i++) {
+  noFly.setInput("p1", { ...emptyInput(), up: true });
+  noFly.update(1 / 60);
+  peakY = Math.min(peakY, noFly.players[0].body.position.y);
+}
+let endY = peakY;
+for (let i = 0; i < 150; i++) {
+  noFly.setInput("p1", { ...emptyInput(), up: true });
+  noFly.update(1 / 60);
+  endY = noFly.players[0].body.position.y;
+}
+// Despite holding Up the whole time, must fall back down from the peak.
+const cannotFly = endY > peakY + 40 && endY > 280;
 
 // 4) Down thruster increases downward speed while airborne.
 const down = makeEngine("flat");
 settle(down);
-for (let i = 0; i < 30; i++) {
-  down.setInput("p1", { ...emptyInput(), up: true });
+Matter.Body.setPosition(down.players[0].body, { x: 390, y: 250 });
+Matter.Body.setVelocity(down.players[0].body, { x: 0, y: -2 });
+for (let i = 0; i < 20; i++) {
+  down.setInput("p1", emptyInput());
   down.update(1 / 60);
 }
 const midY = down.players[0].body.position.y;
@@ -108,8 +158,10 @@ const pressedDown = maxY - midY > 10;
 // 5) Full air control: horizontal thrust while airborne.
 const air = makeEngine("flat");
 settle(air);
-for (let i = 0; i < 40; i++) {
-  air.setInput("p1", { ...emptyInput(), up: true });
+Matter.Body.setPosition(air.players[0].body, { x: 390, y: 260 });
+Matter.Body.setVelocity(air.players[0].body, { x: 0, y: -3 });
+for (let i = 0; i < 15; i++) {
+  air.setInput("p1", emptyInput());
   air.update(1 / 60);
 }
 const airX0 = air.players[0].body.position.x;
@@ -203,7 +255,9 @@ const result = {
     orbitPinned &&
     dxRight > 40 &&
     dxLeft < -40 &&
-    lifted &&
+    upSlowsFall &&
+    bounced &&
+    cannotFly &&
     pressedDown &&
     airDx < -20 &&
     fellOff &&
@@ -215,8 +269,14 @@ const result = {
   orbitPinned,
   dxRight: +dxRight.toFixed(1),
   dxLeft: +dxLeft.toFixed(1),
-  liftPx: +(floorY - minY).toFixed(1),
-  lifted,
+  upSlowsFall,
+  yWithUp: +yWithUp.toFixed(1),
+  yNoUp: +yNoUp.toFixed(1),
+  bounced,
+  bouncePeakPx: +(floorY - peakAfterLand).toFixed(1),
+  cannotFly,
+  peakY: +peakY.toFixed(1),
+  noFlyEndY: +endY.toFixed(1),
   downDropPx: +(maxY - midY).toFixed(1),
   pressedDown,
   airDx: +airDx.toFixed(1),
