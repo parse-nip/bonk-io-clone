@@ -1,26 +1,26 @@
 # Movement Fix — Understanding Checklist
 
-Use this to verify you understand the thruster-physics change.
+Use this to verify you understand why movement felt cooked and what we changed.
 
 ## 1) The problem
-- [ ] Classic mode used a **platformer jump** (`tryJump` only when grounded) and **no Down force**.
-- [ ] The OSU `bonk_v6` tutorial uses **exact kinematic integration** from `draw()`, not Matter.js `applyForce`.
-- [ ] My first fix approximated forces in Matter — that was **not** what the assignment code does.
+- [ ] Players were driven by **kinematic tutorial physics** (`tutorialPhysics.ts`) with Matter gravity set to **0**.
+- [ ] The tutorial bounce ran when `0 < x < map.width` — a **full-width invisible floor**.
+- [ ] That floor sat at `floorMatterY` (top of platforms, or `height - 40` on Classic), so you **could not fall past a certain Y** into the kill zone.
+- [ ] Zeroing Matter velocity every frame also killed real rigid-body knockback / gravity feel → movement felt **slow / floaty / low-g**.
 
-## 2) The solution (exact tutorial loop)
-- [ ] Constants: `mass=3.0`, `dt=0.1`, `g=9.8`, thrust `±15`.
-- [ ] Each frame: `vx += deltaVx`, `vy += deltaVy`, then `x += vx*dt`, `y += vy*dt`.
-- [ ] Vertical: `Fy` from Up/Down → `Fnety = Fy - mass*g` → `deltaVy = (Fnety/mass)*dt`.
-- [ ] Bounce: if `y - radius < 0` and `0 < x < width`, then `vy = -vy`.
-- [ ] Horizontal: `Fx` from Left/Right → `Fnetx = Fx` → `deltaVx = (Fx/mass)*dt`.
-- [ ] Implemented in `src/game/tutorialPhysics.ts`, wired in `src/game/engine.ts`.
+## 2) The solution
+- [ ] Restore **Matter.js thrusters**: `applyForce` on Left/Right/Up/Down every frame.
+- [ ] Map gravity is back: `gravity: { x, y, scale: 0.001 }` from the map def.
+- [ ] `MOVE_FORCE` stays **below** map weight (~0.0012) so Up slows a fall / shapes bounces but cannot sustain flight (same ratio idea as tutorial thrust 15 < mass×g 29.4).
+- [ ] Soft speed caps (`MAX_SPEED` / `HEAVY_MAX_SPEED`) keep continuous thrust readable.
+- [ ] Off a platform edge → real freefall past `killY` → elimination.
 
 ## 3) Broader context
-- [ ] Matter.js is collision-only for players; tutorial state drives position each frame.
-- [ ] Heavy mode multiplies mass in the same formulas (slower accel, harder to push).
-- [ ] `npm run test:movement` asserts horizontal drive, lift, down-press, and air strafe.
+- [ ] Real bonk.io is rigid-body (Box2D-like), not a single-floor Processing sketch.
+- [ ] The OSU `bonk_v6` draw() loop is still available in `tutorialPhysics.ts` for study (`npm run test:tutorial`), but it is **not** the game engine.
+- [ ] `npm run test:movement` asserts spawn freeze, thrusters, **and falling off the arena**.
 
 ## Quiz yourself
-1. Why is `Fnetx = Fx` an "extra step" when gravity is vertical only?
-2. With `g=9.8`, `mass=3`, is `Fy=15` (Up) enough to hover? What does Down + Up bouncing do?
-3. Why do we store `deltaVx`/`deltaVy` across frames instead of applying forces directly to velocity?
+1. Why did `state.x > 0 && state.x < width` prevent falling off Flat Arena?
+2. With Matter gravity `y: 1.2` and `scale: 0.001`, roughly what weight does mass `1` feel? Why must `MOVE_FORCE` stay **below** that?
+3. Why zeroing velocity after kinematic steps broke player–player bonks?
