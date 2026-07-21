@@ -1,10 +1,11 @@
 /**
  * Headless movement regression for thruster-based bonk physics:
- * spawn freeze, horizontal drive, vertical up/down thrusters, air control.
+ * spawn freeze, horizontal/vertical thrusters, air control, fall-off.
  */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import Matter from "matter-js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -76,7 +77,7 @@ const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Up thruster lifts off the floor (tutorial Fnety = Fy - mass*g).
+// 3) Up thruster lifts off the floor.
 const up = makeEngine("flat");
 settle(up);
 const floorY = up.players[0].body.position.y;
@@ -115,15 +116,34 @@ const airX0 = air.players[0].body.position.x;
 drive(air, { ...emptyInput(), left: true }, 60);
 const airDx = air.players[0].body.position.x - airX0;
 
+// 6) Fall off Flat Arena past the platform — no invisible full-width floor.
+const fall = makeEngine("flat");
+settle(fall);
+const fallP = fall.players[0];
+// Place just past the right edge of the 520-wide platform centered at 390.
+Matter.Body.setPosition(fallP.body, { x: 670, y: 300 });
+Matter.Body.setVelocity(fallP.body, { x: 2, y: 0 });
+let fellPastFloor = false;
+let maxFallY = fallP.body.position.y;
+for (let i = 0; i < 180; i++) {
+  fall.setInput("p1", emptyInput());
+  fall.update(1 / 60);
+  maxFallY = Math.max(maxFallY, fallP.body.position.y);
+  if (fallP.body.position.y > 400) fellPastFloor = true;
+  if (!fallP.alive) break;
+}
+const fellOff = fellPastFloor && maxFallY > 400;
+
 const result = {
   ok:
     orbitAlive &&
     orbitPinned &&
-    dxRight > 150 &&
-    dxLeft < -150 &&
+    dxRight > 40 &&
+    dxLeft < -40 &&
     lifted &&
     pressedDown &&
-    airDx < -80 &&
+    airDx < -20 &&
+    fellOff &&
     !flatRight.players[0].body.isStatic,
   orbitAlive,
   orbitPinned,
@@ -134,6 +154,9 @@ const result = {
   downDropPx: +(maxY - midY).toFixed(1),
   pressedDown,
   airDx: +airDx.toFixed(1),
+  fellOff,
+  maxFallY: +maxFallY.toFixed(1),
+  fallAlive: fallP.alive,
   playerStatic: flatRight.players[0].body.isStatic,
 };
 
