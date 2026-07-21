@@ -1,6 +1,9 @@
 /**
- * Exact bonk_v6 tutorial physics from the OSU college assignment draw() loop.
- * Constants and integration order match the reference sketch verbatim.
+ * Reference copy of the OSU bonk_v6 Processing sketch `draw()` loop.
+ *
+ * This is a teaching toy (mass=3, dt=0.1, g=9.8, thrust=±15). It is NOT the
+ * HTML5 bonk.io physics model (Box2D gravity (0,20), disc density/restitution).
+ * Kept for `npm run test:tutorial` / study only — `BonkEngine` does not use it.
  */
 
 export const TUTORIAL_MASS = 3.0;

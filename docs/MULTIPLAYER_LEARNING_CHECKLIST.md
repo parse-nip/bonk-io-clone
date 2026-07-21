@@ -6,7 +6,7 @@ Use this to verify you understand the IP multiplayer implementation.
 
 - [ ] **Why** can't two browsers share one `BonkEngine` directly?
 - [ ] **Why** host-authoritative physics (vs peer-to-peer)?
-- [ ] **Why** snapshots must carry `tutorial.vx/vy`, not Matter `body.velocity`?
+- [ ] **Why** snapshots must carry Matter `body.velocity`, not zeros / tutorial-only kinematics?
 
 ## 2. Architecture
 

@@ -22,13 +22,21 @@ Research window: ~20 minutes before implementation (2026-07-19).
 
 ## Physics (must-feel)
 - Real 2D rigid-body feel: mass, momentum, friction, angular velocity
-- Original uses Box2D-derived / custom server-authoritative sim @ ~60 Hz
-- Circle hitboxes (skin does not change collision)
-- High friction relative to real world (balls slow after contact)
-- Heavy: activate ~200–300 ms before contact, release after
-- Walls/platforms ≈ infinite mass; bounce preserves more energy than ball-ball
+- Original HTML5 uses Box2D-derived / custom server-authoritative sim @ ~60 Hz
+- **Confirmed from client (`js/alpha2s.js`):** world gravity hard-coded to `(0, 20)`
+- **Disc fixture (client):** density ≈ `0.001337`, restitution ≈ `0.95`; body linearDamping ≈ `0.01`
+- Circle hitboxes (skin does not change collision); player radius in map units = `ppm` (default 12)
+- Continuous thrusters on arrow keys (all 4 directions), not grounded jump
+- High platform friction relative to real world; player–player bounce is energetic
+- Heavy: ~2× mass, reduced acceleration; activate ~200–300 ms before contact, release after
+- Walls/platforms ≈ infinite mass when stationary; bounce preserves more energy than soft materials
 - Map scale via `ppm` (pixels-per-meter style); default blank map `ppm: 12`
 - Platform defaults from map format: friction ~0.3, restitution ~0.8, density ~0.3
+
+### Clone mapping (Matter.js)
+- Pixel-ish map coords (~780×520) with Matter `gravity.scale = 0.001`
+- `applyForce` thrusters every frame; soft speed caps
+- Do **not** use OSU tutorial kinematic integrator in the live engine (invisible floor + dead knockback)
 
 ## Input bitfield (from DemystifyBonk)
 `Left=1, Right=2, Up=4, Down=8, Heavy=16, Special=32`
