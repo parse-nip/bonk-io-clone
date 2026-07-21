@@ -118,21 +118,24 @@ for (let i = 0; i < 30; i++) {
 const yNoUp = fallFast.players[0].body.position.y;
 const upSlowsFall = yWithUp < yNoUp - 8;
 
-// Bounce from drop (restitution).
+// Jump / land-hop while holding Up (tutorial floor bounce feel).
 const bounce = makeEngine("flat");
 settle(bounce);
-bounce.players[0].body.setPosition(390, FLAT_REST_Y - 80);
-bounce.players[0].body.setVelocity(0, 0);
-let touchedFloor = false;
-let peakAfterLand = FLAT_REST_Y;
-for (let i = 0; i < 180; i++) {
-  bounce.setInput("p1", emptyInput());
+plantOnFlat(bounce, 390);
+const jumpFloor = bounce.players[0].body.position.y;
+// Press Up on ground → hop.
+bounce.setInput("p1", { ...emptyInput(), up: true });
+bounce.update(1 / 60);
+let jumpPeak = jumpFloor;
+let leftGround = false;
+for (let i = 0; i < 90; i++) {
+  bounce.setInput("p1", { ...emptyInput(), up: true });
   bounce.update(1 / 60);
   const y = bounce.players[0].body.position.y;
-  if (y >= FLAT_REST_Y - 4) touchedFloor = true;
-  if (touchedFloor) peakAfterLand = Math.min(peakAfterLand, y);
+  jumpPeak = Math.min(jumpPeak, y);
+  if (y < jumpFloor - 20) leftGround = true;
 }
-const bounced = touchedFloor && FLAT_REST_Y - peakAfterLand > 8;
+const bounced = leftGround && jumpFloor - jumpPeak > 60;
 
 // No sustained flight.
 const noFly = makeEngine("flat");
@@ -294,7 +297,7 @@ const result = {
   yWithUp: +yWithUp.toFixed(1),
   yNoUp: +yNoUp.toFixed(1),
   bounced,
-  bouncePeakPx: +(FLAT_REST_Y - peakAfterLand).toFixed(1),
+  bouncePeakPx: +(jumpFloor - jumpPeak).toFixed(1),
   cannotFly,
   peakY: +peakY.toFixed(1),
   noFlyEndY: +endY.toFixed(1),

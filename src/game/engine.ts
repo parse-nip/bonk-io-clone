@@ -53,20 +53,31 @@ const PLAYER_FRICTION = 0.1;
 const PLAYER_LINEAR_DAMPING = 0.01;
 const PLAYER_ANGULAR_DAMPING = 3.4;
 /**
- * Tutorial: thrust 15 / weight (3*9.8) ≈ 0.51. Must stay < 1 or Up flies.
+ * Up/strafe thruster vs light weight. Must stay < 1 or holding Up flies.
+ * Higher than raw tutorial 15/(3*9.8)≈0.51 so hops read on g≈350 maps;
+ * still below weight so you bounce, not hover.
  */
-const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8);
+const THRUST_VS_WEIGHT = 0.88;
 /** Heavy thruster vs light weight — much weaker while heavy. */
-const HEAVY_THRUST_VS_WEIGHT = THRUST_VS_WEIGHT * (0.28 / 0.78);
+const HEAVY_THRUST_VS_WEIGHT = 0.32;
 /**
- * Zero-g thruster ≈ tutorial ax * mass with wall-clock match (a≈178).
- * 178 * 3 ≈ 534.
+ * Zero-g thruster ≈ tutorial-scale horizontal accel * mass (a≈178 → F≈534).
  */
 const ZERO_G_MOVE_FORCE = 534;
-const ZERO_G_HEAVY_MOVE_FORCE = ZERO_G_MOVE_FORCE * (0.28 / 0.78);
-/** Soft cap — high enough for snappy tutorial-scale speeds. */
-const MAX_SPEED = 140;
-const HEAVY_MAX_SPEED = 90;
+const ZERO_G_HEAVY_MOVE_FORCE = 190;
+/**
+ * Soft horizontal cap only — never clamp vertical or bounce/jump dies under
+ * high gravity.
+ */
+const MAX_SPEED_X = 160;
+const HEAVY_MAX_SPEED_X = 100;
+/**
+ * Tutorial floor bounce (`vy = -vy`) doesn't happen the same way in Box2D
+ * resting contact. When Up is held and we land / press Up on ground, impart
+ * this upward speed (Y+ is down → negative).
+ */
+const JUMP_SPEED = 130;
+const HEAVY_JUMP_SPEED = 85;
 /** Bonk blank-map fixture defaults (DemystifyBonk / client). */
 const DEFAULT_PLATFORM_DENSITY = 0.3;
 const DEFAULT_PLATFORM_FRICTION = 0.3;
@@ -92,6 +103,9 @@ export interface EnginePlayer {
   grapplePoint: { x: number; y: number } | null;
   team: number;
   score: number;
+  /** Prior-frame grounded flag for bunny-hop / land bounce. */
+  wasGrounded: boolean;
+  prevUp: boolean;
 }
 
 export interface ArrowProj {
@@ -367,6 +381,8 @@ export class BonkEngine {
         grapplePoint: null,
         team: p.team,
         score: 0,
+        wasGrounded: false,
+        prevUp: false,
       };
     });
   }
@@ -543,6 +559,7 @@ export class BonkEngine {
     }
 
     const forceScale = this.thrusterForce(heavy);
+    const grounded = this.isPlayerGrounded(p);
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
@@ -602,12 +619,46 @@ export class BonkEngine {
       this.applyThrusterForce(p, forceScale);
     }
 
-    const maxSpeed = heavy ? HEAVY_MAX_SPEED : MAX_SPEED;
-    const v = p.body.velocity;
-    const speed = Math.hypot(v.x, v.y);
-    if (speed > maxSpeed) {
-      p.body.setVelocity((v.x / speed) * maxSpeed, (v.y / speed) * maxSpeed);
+    // Tutorial-style floor hop: bounce on land / Up press while grounded.
+    // (Box2D resting contacts don't mirror the sketch's `vy = -vy`.)
+    if (input.up && grounded && this.map.gravity.y > 1e-6) {
+      const justLanded = !p.wasGrounded;
+      const upPressed = input.up && !p.prevUp;
+      if (justLanded || upPressed) {
+        const hop = heavy ? HEAVY_JUMP_SPEED : JUMP_SPEED;
+        const v = p.body.velocity;
+        if (v.y > -hop * 0.55) {
+          p.body.setVelocity(v.x, -hop);
+        }
+      }
     }
+    p.wasGrounded = grounded;
+    p.prevUp = input.up;
+
+    // Soft-cap horizontal only — leave vy alone for jump/bounce/freefall.
+    const maxSpeedX = heavy ? HEAVY_MAX_SPEED_X : MAX_SPEED_X;
+    const v = p.body.velocity;
+    if (Math.abs(v.x) > maxSpeedX) {
+      p.body.setVelocity(Math.sign(v.x) * maxSpeedX, v.y);
+    }
+  }
+
+  /** True when the disc is sitting on / grazing a solid platform. */
+  private isPlayerGrounded(p: EnginePlayer): boolean {
+    const pos = p.body.position;
+    const footY = pos.y + PLAYER_RADIUS + 3;
+    for (const plat of this.platforms) {
+      if (plat.label === "death") continue;
+      const f = plat.fixture();
+      if (f?.isSensor()) continue;
+      const b = plat.bounds;
+      if (pos.x < b.min.x - 4 || pos.x > b.max.x + 4) continue;
+      // Feet near the top surface (Y+ down).
+      if (footY >= b.min.y - 2 && pos.y < b.max.y) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
