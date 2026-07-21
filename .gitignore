@@ -6,4 +6,5 @@ dist
 .tmp-engine.mjs
 .tmp-editor-*.mjs
 .tmp-editor-entry.ts
+.tmp-tutorial-physics.mjs
 .tmp/

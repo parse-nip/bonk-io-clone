@@ -8,16 +8,20 @@ import type {
   SpawnDef,
 } from "../types";
 import { getMap } from "./maps";
+import {
+  TUTORIAL_DT,
+  TUTORIAL_G,
+  TUTORIAL_MASS,
+  createTutorialState,
+  matterToTutorialY,
+  tutorialDrawStep,
+  tutorialToMatter,
+  type TutorialInput,
+  type TutorialState,
+} from "./tutorialPhysics";
 
 const PLAYER_RADIUS = 18;
-const BASE_MASS = 1;
-const HEAVY_MASS = 2.4;
-const MOVE_FORCE = 0.00165;
-const HEAVY_MOVE_FORCE = 0.00058;
-const JUMP_FORCE = 0.042;
-const AIR_CONTROL = 0.38;
-const MAX_SPEED = 10.5;
-const HEAVY_MAX_SPEED = 7;
+const HEAVY_MASS_MULT = 2.4;
 
 export interface EnginePlayer {
   id: string;
@@ -36,6 +40,8 @@ export interface EnginePlayer {
   grapplePoint: { x: number; y: number } | null;
   team: number;
   score: number;
+  /** OSU bonk_v6 kinematic state (y-up, floor at y=0). */
+  tutorial: TutorialState;
 }
 
 export interface ArrowProj {
@@ -68,10 +74,10 @@ export class BonkEngine {
   listeners: ((e: EngineEvent) => void)[] = [];
   width: number;
   height: number;
-  private lastJump = new Map<string, number>();
   private pivotConstraints: Matter.Constraint[] = [];
   private wasFreezing = false;
-  private simTime = 0;
+  /** Matter y of the tutorial floor line (tutorial y = 0). */
+  private floorMatterY: number;
   /** Platform body → spawn reset pose / velocities from map def index. */
   private platformMeta = new Map<
     number,
@@ -92,10 +98,22 @@ export class BonkEngine {
     this.width = this.map.width;
     this.height = this.map.height;
     this.engine = Matter.Engine.create({
-      gravity: { x: this.map.gravity.x, y: this.map.gravity.y, scale: 0.001 },
+      // Tutorial physics integrates gravity (Fnety = Fy - mass*g) per player.
+      gravity: { x: 0, y: 0, scale: 0 },
     });
     this.world = this.engine.world;
     this.buildMap();
+    this.floorMatterY = this.computeFloorMatterY();
+  }
+
+  private computeFloorMatterY(): number {
+    const staticPlats = this.platforms.filter((p) => p.isStatic);
+    if (!staticPlats.length) return this.height - 40;
+    let top = Infinity;
+    for (const plat of staticPlats) {
+      top = Math.min(top, plat.bounds.min.y);
+    }
+    return top - PLAYER_RADIUS;
   }
 
   on(fn: (e: EngineEvent) => void) {
@@ -238,8 +256,9 @@ export class BonkEngine {
         density: 0.002,
         label: `player:${p.id}`,
       });
-      Matter.Body.setMass(body, BASE_MASS);
+      Matter.Body.setMass(body, TUTORIAL_MASS);
       Matter.World.add(this.world, body);
+      const tutY = matterToTutorialY(spawn.y, this.floorMatterY);
       return {
         id: p.id,
         name: p.name,
@@ -257,6 +276,7 @@ export class BonkEngine {
         grapplePoint: null,
         team: p.team,
         score: 0,
+        tutorial: createTutorialState(spawn.x, tutY, 0, 0),
       };
     });
   }
@@ -271,8 +291,6 @@ export class BonkEngine {
     this.roundActive = false;
     this.countdown = 2.2;
     this.wasFreezing = false;
-    this.simTime = 0;
-    this.lastJump.clear();
     this.emit({ type: "banner", text: "Get Ready!" });
 
     for (let i = 0; i < this.players.length; i++) {
@@ -286,7 +304,13 @@ export class BonkEngine {
         y: spawn.startSpeedY ?? 0,
       });
       Matter.Body.setAngularVelocity(p.body, 0);
-      Matter.Body.setMass(p.body, BASE_MASS);
+      Matter.Body.setMass(p.body, TUTORIAL_MASS);
+      p.tutorial = createTutorialState(
+        spawn.x,
+        matterToTutorialY(spawn.y, this.floorMatterY),
+        spawn.startSpeedX ?? 0,
+        -(spawn.startSpeedY ?? 0),
+      );
       p.charge = 0;
       p.aiming = false;
       if (p.body) {
@@ -336,7 +360,6 @@ export class BonkEngine {
   }
 
   update(dt: number) {
-    this.simTime += dt;
     if (this.countdown > 0) {
       this.countdown -= dt;
       if (this.countdown <= 0) {
@@ -367,8 +390,13 @@ export class BonkEngine {
     }
 
     this.updateArrows(dt);
+    this.applyWorldGravity(dt);
 
     Matter.Engine.update(this.engine, Math.min(dt, 0.033) * 1000);
+
+    if (!freezing) {
+      this.syncTutorialFromMatter();
+    }
 
     if (this.roundActive) {
       this.checkEliminations();
@@ -386,6 +414,12 @@ export class BonkEngine {
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
       Matter.Body.setAngularVelocity(p.body, 0);
+      p.tutorial = createTutorialState(
+        spawn.x,
+        matterToTutorialY(spawn.y, this.floorMatterY),
+        spawn.startSpeedX ?? 0,
+        -(spawn.startSpeedY ?? 0),
+      );
     }
   }
 
@@ -400,6 +434,26 @@ export class BonkEngine {
         y: spawn.startSpeedY ?? 0,
       });
       Matter.Body.setAngularVelocity(p.body, 0);
+      p.tutorial.vx = spawn.startSpeedX ?? 0;
+      p.tutorial.vy = -(spawn.startSpeedY ?? 0);
+    }
+  }
+
+  private applyWorldGravity(_dt: number) {
+    if (this.ball) {
+      const v = this.ball.velocity;
+      Matter.Body.setVelocity(this.ball, {
+        x: v.x,
+        y: v.y + TUTORIAL_G * TUTORIAL_DT,
+      });
+    }
+  }
+
+  private syncTutorialFromMatter() {
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      p.tutorial.x = p.body.position.x;
+      p.tutorial.y = matterToTutorialY(p.body.position.y, this.floorMatterY);
     }
   }
 
@@ -433,15 +487,17 @@ export class BonkEngine {
   private applyPlayerControl(p: EnginePlayer, dt: number) {
     const { input } = p;
     const heavy = input.heavy;
-    const targetMass = heavy ? HEAVY_MASS : BASE_MASS;
-    if (Math.abs(p.body.mass - targetMass) > 0.01) {
-      Matter.Body.setMass(p.body, targetMass);
+    const mass = heavy ? TUTORIAL_MASS * HEAVY_MASS_MULT : TUTORIAL_MASS;
+    if (Math.abs(p.body.mass - mass) > 0.01) {
+      Matter.Body.setMass(p.body, mass);
     }
 
-    // Football: floaty, no gravity feel already from map; kick with heavy
-    const forceScale = heavy ? HEAVY_MOVE_FORCE : MOVE_FORCE;
-    const grounded = this.isGrounded(p);
-    const air = grounded ? 1 : AIR_CONTROL;
+    const tutInput: TutorialInput = {
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+    };
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
@@ -452,53 +508,49 @@ export class BonkEngine {
         p.charge = Math.min(1, p.charge + dt * 0.9);
         if (input.left) p.aimAngle -= dt * 2.8;
         if (input.right) p.aimAngle += dt * 2.8;
-        if (input.up && grounded) this.tryJump(p);
+        tutInput.up = input.up;
+        tutInput.down = input.down;
       } else {
         if (p.aiming && p.charge > 0.08) {
           this.fireArrow(p);
         }
         p.aiming = false;
         p.charge = 0;
-        if (input.left) {
-          Matter.Body.applyForce(p.body, p.body.position, {
-            x: -forceScale * air,
-            y: 0,
-          });
-          p.facing = -1;
-        }
-        if (input.right) {
-          Matter.Body.applyForce(p.body, p.body.position, {
-            x: forceScale * air,
-            y: 0,
-          });
-          p.facing = 1;
-        }
-        if (input.up && grounded) this.tryJump(p);
+        tutInput.left = input.left;
+        tutInput.right = input.right;
+        tutInput.up = input.up;
+        tutInput.down = input.down;
       }
-    } else if (this.mode === "grapple") {
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: -forceScale * air,
-          y: 0,
-        });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: forceScale * air,
-          y: 0,
-        });
-        p.facing = 1;
-      }
-      if (input.up && grounded) this.tryJump(p);
+    } else {
+      tutInput.left = input.left;
+      tutInput.right = input.right;
+      tutInput.up = input.up;
+      tutInput.down = input.down;
+    }
 
+    if (tutInput.left) p.facing = -1;
+    if (tutInput.right) p.facing = 1;
+
+    tutorialDrawStep(
+      p.tutorial,
+      tutInput,
+      mass,
+      PLAYER_RADIUS,
+      this.width,
+    );
+
+    const matterPos = tutorialToMatter(p.tutorial, this.floorMatterY);
+    Matter.Body.setPosition(p.body, matterPos);
+    // Kinematic: tutorial already integrated x/y; zero vel so Matter won't double-integrate.
+    Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+
+    if (this.mode === "grapple") {
       if (input.special) {
         if (!p.grapple) this.attachGrapple(p);
       } else {
         this.releaseGrapple(p);
       }
 
-      // knock off grapple on player contact while grappling
       if (p.grapple) {
         for (const other of this.players) {
           if (other.id === p.id || !other.alive) continue;
@@ -514,103 +566,20 @@ export class BonkEngine {
           }
         }
       }
-    } else if (this.mode === "football") {
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: -forceScale * 1.3, y: 0 });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: forceScale * 1.3, y: 0 });
-        p.facing = 1;
-      }
-      if (input.up) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: -forceScale * 1.3 });
-      }
-      if (input.down) {
-        Matter.Body.applyForce(p.body, p.body.position, { x: 0, y: forceScale * 1.3 });
-      }
-      if (heavy && this.ball) {
-        const d = Matter.Vector.magnitude(
-          Matter.Vector.sub(p.body.position, this.ball.position),
+    } else if (this.mode === "football" && heavy && this.ball) {
+      const d = Matter.Vector.magnitude(
+        Matter.Vector.sub(p.body.position, this.ball.position),
+      );
+      if (d < PLAYER_RADIUS + 22) {
+        const dir = Matter.Vector.normalise(
+          Matter.Vector.sub(this.ball.position, p.body.position),
         );
-        if (d < PLAYER_RADIUS + 22) {
-          const dir = Matter.Vector.normalise(
-            Matter.Vector.sub(this.ball.position, p.body.position),
-          );
-          Matter.Body.applyForce(this.ball, this.ball.position, {
-            x: dir.x * 0.05,
-            y: dir.y * 0.05,
-          });
-        }
-      }
-    } else {
-      // classic
-      if (input.left) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: -forceScale * air,
-          y: 0,
+        Matter.Body.applyForce(this.ball, this.ball.position, {
+          x: dir.x * 0.05,
+          y: dir.y * 0.05,
         });
-        p.facing = -1;
-      }
-      if (input.right) {
-        Matter.Body.applyForce(p.body, p.body.position, {
-          x: forceScale * air,
-          y: 0,
-        });
-        p.facing = 1;
-      }
-      if (input.up && grounded) this.tryJump(p);
-    }
-
-    // soft speed cap (applied before physics so airborne drift stays controllable)
-    const maxSpeed = heavy ? HEAVY_MAX_SPEED : MAX_SPEED;
-    const v = p.body.velocity;
-    const speed = Math.hypot(v.x, v.y);
-    if (speed > maxSpeed) {
-      Matter.Body.setVelocity(p.body, {
-        x: (v.x / speed) * maxSpeed,
-        y: (v.y / speed) * maxSpeed,
-      });
-    }
-  }
-
-  private tryJump(p: EnginePlayer) {
-    const last = this.lastJump.get(p.id) ?? -1;
-    if (this.simTime - last < 0.28) return;
-    this.lastJump.set(p.id, this.simTime);
-    Matter.Body.setVelocity(p.body, {
-      x: p.body.velocity.x,
-      y: -JUMP_FORCE * 220,
-    });
-  }
-
-  private isGrounded(p: EnginePlayer): boolean {
-    // Short downward probe from the feet — reliable for flat and tilted platforms.
-    const origin = p.body.position;
-    const feet = { x: origin.x, y: origin.y + PLAYER_RADIUS - 2 };
-    const probe = { x: feet.x, y: feet.y + 10 };
-    const rayHits = Matter.Query.ray(this.platforms, feet, probe);
-    if (rayHits.length > 0) {
-      return true;
-    }
-
-    for (const plat of this.platforms) {
-      const coll = Matter.Collision.collides(p.body, plat);
-      if (!coll) continue;
-      // Matter.js separation normals point down when standing on a surface below.
-      const ny = coll.normal.y;
-      if (ny > 0.35 && p.body.velocity.y >= -1.2) {
-        return true;
-      }
-      // Legacy fallback for shallow overlap on moving/tilting platforms.
-      if (
-        p.body.position.y <= plat.position.y &&
-        Math.abs(p.body.velocity.y) < 2.5
-      ) {
-        return true;
       }
     }
-    return false;
   }
 
   private attachGrapple(p: EnginePlayer) {
