@@ -1,26 +1,39 @@
-# Movement Fix — Understanding Checklist
+# Movement Physics — Understanding Checklist
 
-Use this to verify you understand the thruster-physics change.
+Use this to verify you understand why movement was wrong and what 1:1 means here.
 
 ## 1) The problem
-- [ ] Classic mode used a **platformer jump** (`tryJump` only when grounded) and **no Down force**.
-- [ ] The OSU `bonk_v6` tutorial uses **exact kinematic integration** from `draw()`, not Matter.js `applyForce`.
-- [ ] My first fix approximated forces in Matter — that was **not** what the assignment code does.
+- [ ] Players were driven by **kinematic tutorial physics** (`tutorialPhysics.ts`) with Matter gravity set to **0**.
+- [ ] The tutorial bounce ran when `0 < x < map.width` — a **full-width invisible floor**.
+- [ ] That floor sat at `floorMatterY`, so you **could not fall** past a certain Y into the kill zone.
+- [ ] Zeroing Matter velocity every frame killed rigid-body knockback → movement felt **slow / floaty**.
+- [ ] The OSU `bonk_v6` sketch is a teaching toy, **not** HTML5 bonk.io (which is Box2D).
 
-## 2) The solution (exact tutorial loop)
-- [ ] Constants: `mass=3.0`, `dt=0.1`, `g=9.8`, thrust `±15`.
-- [ ] Each frame: `vx += deltaVx`, `vy += deltaVy`, then `x += vx*dt`, `y += vy*dt`.
-- [ ] Vertical: `Fy` from Up/Down → `Fnety = Fy - mass*g` → `deltaVy = (Fnety/mass)*dt`.
-- [ ] Bounce: if `y - radius < 0` and `0 < x < width`, then `vy = -vy`.
-- [ ] Horizontal: `Fx` from Left/Right → `Fnetx = Fx` → `deltaVx = (Fx/mass)*dt`.
-- [ ] Implemented in `src/game/tutorialPhysics.ts`, wired in `src/game/engine.ts`.
+## 2) What real bonk does (research)
+- [ ] Client creates a Box2D world with gravity **`(0, 20)`** (confirmed in `alpha2s.js`).
+- [ ] Player is a **disc**; fixture density ≈ **0.001337**, restitution ≈ **0.95**.
+- [ ] Player radius in map units equals **`ppm`** (default **12**) — kklee / DemystifyBonk.
+- [ ] Controls are **continuous thrusters** on Left/Right/Up/Down (not a grounded jump).
+- [ ] **Heavy** roughly **doubles mass** and cuts acceleration / maneuverability.
+- [ ] Platform defaults: friction ~0.3, restitution ~0.8, density ~0.3.
 
-## 3) Broader context
-- [ ] Matter.js is collision-only for players; tutorial state drives position each frame.
-- [ ] Heavy mode multiplies mass in the same formulas (slower accel, harder to push).
-- [ ] `npm run test:movement` asserts horizontal drive, lift, down-press, and air strafe.
+## 3) The solution in this clone
+- [ ] Matter.js thrusters: `applyForce` on Left/Right/Up/Down every frame.
+- [ ] Map gravity on: `gravity: { x, y, scale: 0.001 }` from the map def.
+- [ ] Disc-like player: restitution **0.95**, low friction, air drag ~0.01.
+- [ ] `HEAVY_MASS = 2× BASE_MASS`; weaker `HEAVY_MOVE_FORCE`.
+- [ ] `THRUST_VS_WEIGHT < 1` so Up **cannot hover/fly** — bounce with Up/Down like real bonk.
+- [ ] Soft speed caps keep continuous thrust readable.
+- [ ] Off a platform edge → real freefall past `killY` → elimination.
+- [ ] Snapshots carry **Matter** `body.velocity` (needed for knockback online).
+
+## 4) Broader context
+- [ ] Matter is a stand-in for Box2D; units are scaled for pixel maps, model is the same.
+- [ ] `tutorialPhysics.ts` remains for study (`npm run test:tutorial`) but is **not** the game loop.
+- [ ] `npm run test:movement` asserts thrusters, fall-off, **collision momentum**, and heavy slowdown.
 
 ## Quiz yourself
-1. Why is `Fnetx = Fx` an "extra step" when gravity is vertical only?
-2. With `g=9.8`, `mass=3`, is `Fy=15` (Up) enough to hover? What does Down + Up bouncing do?
-3. Why do we store `deltaVx`/`deltaVy` across frames instead of applying forces directly to velocity?
+1. Why did `state.x > 0 && state.x < width` prevent falling off Flat Arena?
+2. With Matter gravity `y: 1.2` and `scale: 0.001`, what weight does mass `1` feel? Why must thruster stay **below** that?
+3. Why must snapshots send body velocity instead of zeros after a kinematic step?
+4. What Box2D gravity vector does the real HTML5 client hard-code?

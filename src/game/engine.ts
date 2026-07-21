@@ -9,20 +9,44 @@ import type {
 } from "../types";
 import { getMap } from "./maps";
 import type { GameSnapshot } from "../../shared/protocol";
-import {
-  TUTORIAL_DT,
-  TUTORIAL_G,
-  TUTORIAL_MASS,
-  createTutorialState,
-  matterToTutorialY,
-  tutorialDrawStep,
-  tutorialToMatter,
-  type TutorialInput,
-  type TutorialState,
-} from "./tutorialPhysics";
 
+/**
+ * Movement constants tuned toward HTML5 bonk.io (Box2D) behavior.
+ *
+ * Reverse-engineered from bonk client + DemystifyBonk / kklee:
+ * - World gravity is exactly (0, 20) in Box2D units.
+ * - Player disc fixture: density ≈ 0.001337, restitution ≈ 0.95.
+ * - Player radius in map units equals `ppm` (default 12).
+ * - Heavy roughly doubles mass and cuts thruster authority.
+ *
+ * This clone uses Matter.js in pixel-ish map space, so forces/gravity are
+ * scaled (Matter gravity.scale = 0.001) while preserving the same control
+ * model: continuous 4-way thrusters + rigid-body collisions + freefall.
+ */
 const PLAYER_RADIUS = 18;
-const HEAVY_MASS_MULT = 2.4;
+const BASE_MASS = 1;
+/** Real bonk: heavy ~doubles mass (wiki / client). */
+const HEAVY_MASS = 2;
+/** Matter gravity scale — weight force = mass * |gy| * this. */
+const GRAVITY_SCALE = 0.001;
+/**
+ * Thruster as a fraction of *light* body weight. Must stay < 1 or holding Up
+ * lets you fly (real bonk / OSU tutorial: thrust < weight; you bounce, not hover).
+ */
+const THRUST_VS_WEIGHT = 0.78;
+/** Heavy thruster vs light weight — much weaker acceleration while heavy. */
+const HEAVY_THRUST_VS_WEIGHT = 0.28;
+/** Absolute thruster when map gravity is 0 (Football). */
+const ZERO_G_MOVE_FORCE = 0.0011;
+const ZERO_G_HEAVY_MOVE_FORCE = 0.0004;
+const MAX_SPEED = 11;
+const HEAVY_MAX_SPEED = 7.2;
+/** Disc restitution from bonk client discbody fixture (~0.95). */
+const PLAYER_RESTITUTION = 0.95;
+/** Low player friction; platforms carry most sliding resistance (bonk defaults). */
+const PLAYER_FRICTION = 0.05;
+/** Matches disc body linearDamping ≈ 0.01 in the client. */
+const PLAYER_FRICTION_AIR = 0.01;
 
 export interface EnginePlayer {
   id: string;
@@ -41,8 +65,6 @@ export interface EnginePlayer {
   grapplePoint: { x: number; y: number } | null;
   team: number;
   score: number;
-  /** OSU bonk_v6 kinematic state (y-up, floor at y=0). */
-  tutorial: TutorialState;
 }
 
 export interface ArrowProj {
@@ -77,8 +99,6 @@ export class BonkEngine {
   height: number;
   private pivotConstraints: Matter.Constraint[] = [];
   private wasFreezing = false;
-  /** Matter y of the tutorial floor line (tutorial y = 0). */
-  private floorMatterY: number;
   /** Platform body → spawn reset pose / velocities from map def index. */
   private platformMeta = new Map<
     number,
@@ -99,22 +119,14 @@ export class BonkEngine {
     this.width = this.map.width;
     this.height = this.map.height;
     this.engine = Matter.Engine.create({
-      // Tutorial physics integrates gravity (Fnety = Fy - mass*g) per player.
-      gravity: { x: 0, y: 0, scale: 0 },
+      gravity: {
+        x: this.map.gravity.x,
+        y: this.map.gravity.y,
+        scale: GRAVITY_SCALE,
+      },
     });
     this.world = this.engine.world;
     this.buildMap();
-    this.floorMatterY = this.computeFloorMatterY();
-  }
-
-  private computeFloorMatterY(): number {
-    const staticPlats = this.platforms.filter((p) => p.isStatic);
-    if (!staticPlats.length) return this.height - 40;
-    let top = Infinity;
-    for (const plat of staticPlats) {
-      top = Math.min(top, plat.bounds.min.y);
-    }
-    return top - PLAYER_RADIUS;
   }
 
   on(fn: (e: EngineEvent) => void) {
@@ -143,8 +155,10 @@ export class BonkEngine {
       const opts: Matter.IBodyDefinition = {
         isStatic: !isDynamic,
         isSensor: !!shape.noPhysics,
-        friction: shape.friction ?? 0.4,
-        restitution: shape.restitution ?? 0.5,
+        // Bonk map defaults: friction ~0.3, restitution ~0.8, density ~0.3
+        // (DemystifyBonk / blank fixture). Scaled for Matter pixel maps.
+        friction: shape.friction ?? 0.3,
+        restitution: shape.restitution ?? 0.8,
         density: shape.density ?? 0.002,
         label: shape.death && !shape.noPhysics ? "death" : "platform",
         angle: ((shape.angle ?? 0) * Math.PI) / 180,
@@ -261,15 +275,14 @@ export class BonkEngine {
     this.players = profiles.map((p, i) => {
       const spawn = this.pickSpawn(i, p.team);
       const body = Matter.Bodies.circle(spawn.x, spawn.y, PLAYER_RADIUS, {
-        restitution: 0.55,
-        friction: 0.35,
-        frictionAir: 0.012,
+        restitution: PLAYER_RESTITUTION,
+        friction: PLAYER_FRICTION,
+        frictionAir: PLAYER_FRICTION_AIR,
         density: 0.002,
         label: `player:${p.id}`,
       });
-      Matter.Body.setMass(body, TUTORIAL_MASS);
+      Matter.Body.setMass(body, BASE_MASS);
       Matter.World.add(this.world, body);
-      const tutY = matterToTutorialY(spawn.y, this.floorMatterY);
       return {
         id: p.id,
         name: p.name,
@@ -287,7 +300,6 @@ export class BonkEngine {
         grapplePoint: null,
         team: p.team,
         score: 0,
-        tutorial: createTutorialState(spawn.x, tutY, 0, 0),
       };
     });
   }
@@ -315,13 +327,7 @@ export class BonkEngine {
         y: spawn.startSpeedY ?? 0,
       });
       Matter.Body.setAngularVelocity(p.body, 0);
-      Matter.Body.setMass(p.body, TUTORIAL_MASS);
-      p.tutorial = createTutorialState(
-        spawn.x,
-        matterToTutorialY(spawn.y, this.floorMatterY),
-        spawn.startSpeedX ?? 0,
-        -(spawn.startSpeedY ?? 0),
-      );
+      Matter.Body.setMass(p.body, BASE_MASS);
       p.charge = 0;
       p.aiming = false;
       if (p.body) {
@@ -401,13 +407,8 @@ export class BonkEngine {
     }
 
     this.updateArrows(dt);
-    this.applyWorldGravity(dt);
 
     Matter.Engine.update(this.engine, Math.min(dt, 0.033) * 1000);
-
-    if (!freezing) {
-      this.syncTutorialFromMatter();
-    }
 
     if (this.roundActive) {
       this.checkEliminations();
@@ -425,12 +426,6 @@ export class BonkEngine {
       Matter.Body.setPosition(p.body, { x: spawn.x, y: spawn.y });
       Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
       Matter.Body.setAngularVelocity(p.body, 0);
-      p.tutorial = createTutorialState(
-        spawn.x,
-        matterToTutorialY(spawn.y, this.floorMatterY),
-        spawn.startSpeedX ?? 0,
-        -(spawn.startSpeedY ?? 0),
-      );
     }
   }
 
@@ -445,26 +440,6 @@ export class BonkEngine {
         y: spawn.startSpeedY ?? 0,
       });
       Matter.Body.setAngularVelocity(p.body, 0);
-      p.tutorial.vx = spawn.startSpeedX ?? 0;
-      p.tutorial.vy = -(spawn.startSpeedY ?? 0);
-    }
-  }
-
-  private applyWorldGravity(_dt: number) {
-    if (this.ball) {
-      const v = this.ball.velocity;
-      Matter.Body.setVelocity(this.ball, {
-        x: v.x,
-        y: v.y + TUTORIAL_G * TUTORIAL_DT,
-      });
-    }
-  }
-
-  private syncTutorialFromMatter() {
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      p.tutorial.x = p.body.position.x;
-      p.tutorial.y = matterToTutorialY(p.body.position.y, this.floorMatterY);
     }
   }
 
@@ -495,20 +470,28 @@ export class BonkEngine {
     }
   }
 
+  /** Thruster magnitude: always below weight when gravity > 0 (no flying). */
+  private thrusterForce(heavy: boolean): number {
+    const gy = Math.abs(this.map.gravity.y);
+    if (gy < 1e-6) {
+      return heavy ? ZERO_G_HEAVY_MOVE_FORCE : ZERO_G_MOVE_FORCE;
+    }
+    const lightWeight = BASE_MASS * gy * GRAVITY_SCALE;
+    const force =
+      lightWeight * (heavy ? HEAVY_THRUST_VS_WEIGHT : THRUST_VS_WEIGHT);
+    return this.mode === "football" ? force * 1.25 : force;
+  }
+
   private applyPlayerControl(p: EnginePlayer, dt: number) {
     const { input } = p;
     const heavy = input.heavy;
-    const mass = heavy ? TUTORIAL_MASS * HEAVY_MASS_MULT : TUTORIAL_MASS;
-    if (Math.abs(p.body.mass - mass) > 0.01) {
-      Matter.Body.setMass(p.body, mass);
+    const targetMass = heavy ? HEAVY_MASS : BASE_MASS;
+    if (Math.abs(p.body.mass - targetMass) > 0.01) {
+      Matter.Body.setMass(p.body, targetMass);
     }
 
-    const tutInput: TutorialInput = {
-      left: false,
-      right: false,
-      up: false,
-      down: false,
-    };
+    // Continuous thrusters; Up cannot overcome weight → bounce, don't fly.
+    const forceScale = this.thrusterForce(heavy);
 
     if (this.mode === "arrows" || this.mode === "deatharrows") {
       if (input.special) {
@@ -519,43 +502,22 @@ export class BonkEngine {
         p.charge = Math.min(1, p.charge + dt * 0.9);
         if (input.left) p.aimAngle -= dt * 2.8;
         if (input.right) p.aimAngle += dt * 2.8;
-        tutInput.up = input.up;
-        tutInput.down = input.down;
+        // Vertical thrusters still work while aiming (strafe locked to aim).
+        this.applyThrusterForce(p, forceScale, {
+          horizontal: false,
+          vertical: true,
+        });
       } else {
         if (p.aiming && p.charge > 0.08) {
           this.fireArrow(p);
         }
         p.aiming = false;
         p.charge = 0;
-        tutInput.left = input.left;
-        tutInput.right = input.right;
-        tutInput.up = input.up;
-        tutInput.down = input.down;
+        this.applyThrusterForce(p, forceScale);
       }
-    } else {
-      tutInput.left = input.left;
-      tutInput.right = input.right;
-      tutInput.up = input.up;
-      tutInput.down = input.down;
-    }
+    } else if (this.mode === "grapple") {
+      this.applyThrusterForce(p, forceScale);
 
-    if (tutInput.left) p.facing = -1;
-    if (tutInput.right) p.facing = 1;
-
-    tutorialDrawStep(
-      p.tutorial,
-      tutInput,
-      mass,
-      PLAYER_RADIUS,
-      this.width,
-    );
-
-    const matterPos = tutorialToMatter(p.tutorial, this.floorMatterY);
-    Matter.Body.setPosition(p.body, matterPos);
-    // Kinematic: tutorial already integrated x/y; zero vel so Matter won't double-integrate.
-    Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
-
-    if (this.mode === "grapple") {
       if (input.special) {
         if (!p.grapple) this.attachGrapple(p);
       } else {
@@ -577,19 +539,71 @@ export class BonkEngine {
           }
         }
       }
-    } else if (this.mode === "football" && heavy && this.ball) {
-      const d = Matter.Vector.magnitude(
-        Matter.Vector.sub(p.body.position, this.ball.position),
-      );
-      if (d < PLAYER_RADIUS + 22) {
-        const dir = Matter.Vector.normalise(
-          Matter.Vector.sub(this.ball.position, p.body.position),
+    } else if (this.mode === "football") {
+      this.applyThrusterForce(p, forceScale);
+      if (heavy && this.ball) {
+        const d = Matter.Vector.magnitude(
+          Matter.Vector.sub(p.body.position, this.ball.position),
         );
-        Matter.Body.applyForce(this.ball, this.ball.position, {
-          x: dir.x * 0.05,
-          y: dir.y * 0.05,
-        });
+        if (d < PLAYER_RADIUS + 22) {
+          const dir = Matter.Vector.normalise(
+            Matter.Vector.sub(this.ball.position, p.body.position),
+          );
+          Matter.Body.applyForce(this.ball, this.ball.position, {
+            x: dir.x * 0.05,
+            y: dir.y * 0.05,
+          });
+        }
       }
+    } else {
+      this.applyThrusterForce(p, forceScale);
+    }
+
+    const maxSpeed = heavy ? HEAVY_MAX_SPEED : MAX_SPEED;
+    const v = p.body.velocity;
+    const speed = Math.hypot(v.x, v.y);
+    if (speed > maxSpeed) {
+      Matter.Body.setVelocity(p.body, {
+        x: (v.x / speed) * maxSpeed,
+        y: (v.y / speed) * maxSpeed,
+      });
+    }
+  }
+
+  /**
+   * Continuous directional thrusters from input.
+   * Matter.js already adds weight each step via engine.gravity.
+   */
+  private applyThrusterForce(
+    p: EnginePlayer,
+    forceScale: number,
+    axes: { horizontal?: boolean; vertical?: boolean } = {
+      horizontal: true,
+      vertical: true,
+    },
+  ) {
+    const { input } = p;
+    let fx = 0;
+    let fy = 0;
+
+    if (axes.horizontal !== false) {
+      if (input.left) {
+        fx -= forceScale;
+        p.facing = -1;
+      }
+      if (input.right) {
+        fx += forceScale;
+        p.facing = 1;
+      }
+    }
+    if (axes.vertical !== false) {
+      // Matter Y+ is down, so Up applies a negative force (against gravity).
+      if (input.up) fy -= forceScale;
+      if (input.down) fy += forceScale;
+    }
+
+    if (fx !== 0 || fy !== 0) {
+      Matter.Body.applyForce(p.body, p.body.position, { x: fx, y: fy });
     }
   }
 
@@ -805,8 +819,8 @@ export class BonkEngine {
         id: p.id,
         x: p.body.position.x,
         y: p.body.position.y,
-        vx: p.tutorial.vx,
-        vy: -p.tutorial.vy,
+        vx: p.body.velocity.x,
+        vy: p.body.velocity.y,
         angle: p.body.angle,
         av: p.body.angularVelocity,
         alive: p.alive,
@@ -880,18 +894,10 @@ export class BonkEngine {
       }
 
       Matter.Body.setPosition(p.body, { x: sp.x, y: sp.y });
-      Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+      Matter.Body.setVelocity(p.body, { x: sp.vx, y: sp.vy });
       Matter.Body.setAngle(p.body, sp.angle);
       Matter.Body.setAngularVelocity(p.body, sp.av);
-      Matter.Body.setMass(
-        p.body,
-        sp.heavy ? TUTORIAL_MASS * HEAVY_MASS_MULT : TUTORIAL_MASS,
-      );
-
-      p.tutorial.x = sp.x;
-      p.tutorial.y = matterToTutorialY(sp.y, this.floorMatterY);
-      p.tutorial.vx = sp.vx;
-      p.tutorial.vy = -sp.vy;
+      Matter.Body.setMass(p.body, sp.heavy ? HEAVY_MASS : BASE_MASS);
 
       if (sp.grapple) {
         if (
