@@ -5,6 +5,7 @@ dist
 .env
 .tmp-engine.mjs
 .tmp-tutorial-physics.mjs
+.tmp-multiplayer-engine.mjs
 .tmp/
 .wrangler
 .dev.vars
