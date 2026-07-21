@@ -57,7 +57,7 @@ Research window: ~20 minutes before implementation (2026-07-19).
 Quick Play offers Classic / Arrows / Grapple. Custom Game can pick any mode + map + rounds + teams.
 
 ## UI / visual identity (1:1 targets)
-- Fixed game viewport (~730×500 feel) centered on dark page
+- Full-window stage (100vw×100vh); logical map stays 780×520 and stretches to fill the canvas
 - Charcoal/dark gray playfield background (#2b2b2b-ish)
 - Top chrome bar: logo text, username, friends, skin preview circle, settings
 - Stack of sandy-brown rectangular menu buttons (Quick Play, Custom Game, Skin, Friends, Settings)

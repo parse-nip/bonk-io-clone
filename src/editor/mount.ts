@@ -598,7 +598,25 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     num("pp-w", "w");
     num("pp-h", "h");
     num("pp-r", "r");
-    num("pp-angle", "angle");
+    // Angle edits on rotating platforms keep the world pivot fixed so the
+    // body orbits the offset hinge (matches in-game revolute behavior).
+    props.querySelector("#pp-angle")?.addEventListener("change", (e) => {
+      const next = Number((e.target as HTMLInputElement).value);
+      if (p.moveType === "rotate" && (p.pivotX !== 0 || p.pivotY !== 0)) {
+        const oldRad = (p.angle * Math.PI) / 180;
+        const newRad = (next * Math.PI) / 180;
+        const oc = Math.cos(oldRad);
+        const os = Math.sin(oldRad);
+        const pivWx = p.x + p.pivotX * oc - p.pivotY * os;
+        const pivWy = p.y + p.pivotX * os + p.pivotY * oc;
+        const nc = Math.cos(newRad);
+        const ns = Math.sin(newRad);
+        p.x = pivWx - (p.pivotX * nc - p.pivotY * ns);
+        p.y = pivWy - (p.pivotX * ns + p.pivotY * nc);
+      }
+      p.angle = next;
+      commit();
+    });
     num("pp-bounce", "restitution");
     num("pp-dens", "density");
     num("pp-fric", "friction");
@@ -646,6 +664,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       const copy = structuredClone(p);
       copy.id = eid("p");
       copy.x = doc.width - p.x;
+      copy.pivotX = -p.pivotX;
+      copy.angle = -p.angle;
       copy.name = `${p.name} InvX`;
       doc.platforms.push(copy);
       selection = { kind: "platform", id: copy.id };
@@ -655,6 +675,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       const copy = structuredClone(p);
       copy.id = eid("p");
       copy.y = doc.height - p.y;
+      copy.pivotY = -p.pivotY;
+      copy.angle = -p.angle;
       copy.name = `${p.name} InvY`;
       doc.platforms.push(copy);
       selection = { kind: "platform", id: copy.id };
@@ -956,8 +978,10 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       if (p.type === "circle") {
         p.r = Math.max(8, snap(Math.hypot(w.x - p.x, w.y - p.y)));
       } else {
-        p.w = Math.max(12, snap(Math.abs(w.x - p.x) * 2));
-        p.h = Math.max(8, snap(Math.abs(w.y - p.y) * 2));
+        // Resize in local space so angled platforms keep correct extents.
+        const local = worldToPlatformLocal(p, w.x, w.y);
+        p.w = Math.max(12, snap(Math.abs(local.x) * 2));
+        p.h = Math.max(8, snap(Math.abs(local.y) * 2));
       }
       drawCanvas();
       return;

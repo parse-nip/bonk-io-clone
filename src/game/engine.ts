@@ -241,24 +241,26 @@ export class BonkEngine {
       }
 
       if (isRotate) {
+        // Pivot is a local-space offset from the body origin. Ground is at
+        // identity, so its local anchor equals the world hinge point.
         const px = shape.pivotX ?? 0;
         const py = shape.pivotY ?? 0;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        const anchor = new Vec2(
+        const worldAnchor = new Vec2(
           shape.x + px * cos - py * sin,
           shape.y + px * sin + py * cos,
         );
         const joint = this.world.createJoint(
-          new RevoluteJoint(
-            {
-              collideConnected: false,
-              enableMotor: false,
-            },
-            this.ground.raw,
-            raw,
-            anchor,
-          ),
+          new RevoluteJoint({
+            collideConnected: false,
+            enableMotor: false,
+            bodyA: this.ground.raw,
+            bodyB: raw,
+            localAnchorA: worldAnchor,
+            localAnchorB: new Vec2(px, py),
+            referenceAngle: angle,
+          }),
         );
         if (joint) this.pivotJoints.push(joint);
         // Match prior Matter inertia bump for a slower, bonk-like tip.
@@ -478,6 +480,13 @@ export class BonkEngine {
     const step = Math.min(dt, 0.033);
     this.world.step(step, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
     this.world.clearForces();
+
+    // Joint solvers can nudge offset-pivot platforms during the countdown
+    // freeze; snap them again after the step so the hinge pose stays exact.
+    if (freezing) {
+      this.freezeDynamicPlatforms();
+      this.freezePlayersAtSpawn();
+    }
 
     // Apply hops after the step, then destroy stale floor contacts. Box2D
     // runs the velocity solver BEFORE updating contacts, so leftover ground

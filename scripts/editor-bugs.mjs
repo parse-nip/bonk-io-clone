@@ -121,6 +121,96 @@ assert(
   `pos=${plat.position.x.toFixed(1)},${plat.position.y.toFixed(1)}`,
 );
 
+// 3b) Offset pivot stays fixed while the platform tips (post-countdown)
+const tipMap = {
+  id: "custom-pivot-tip",
+  name: "Tip",
+  author: "Tester",
+  modeHint: "classic",
+  width: 780,
+  height: 520,
+  gravity: { x: 0, y: 360 },
+  killY: 900,
+  killPadding: 80,
+  shapes: [
+    {
+      type: "box",
+      x: 390,
+      y: 300,
+      w: 280,
+      h: 48,
+      color: "#8fd14f",
+      rotate: true,
+      pivotX: 100,
+      pivotY: 0,
+      density: 0.3,
+      friction: 0.5,
+      restitution: 0.3,
+      static: false,
+      angularDamping: 0.02,
+    },
+  ],
+  spawns: [{ x: 280, y: 250 }],
+};
+registerCustomMaps([tipMap]);
+const tipEngine = new BonkEngine("classic", tipMap.id, 3);
+tipEngine.addPlayers([
+  {
+    id: "local",
+    name: "P1",
+    guest: true,
+    skin: { baseColor: "#e74c3c", eyes: true, mouth: true, accent: "#000" },
+    wins: 0,
+    team: 1,
+    ready: true,
+  },
+]);
+tipEngine.startRound();
+for (let i = 0; i < 200; i++) tipEngine.update(1 / 60);
+const tipPlat = tipEngine.platforms[0];
+let maxDrift = 0;
+let sawTip = false;
+for (let i = 0; i < 120; i++) {
+  tipEngine.update(1 / 60);
+  const a = tipPlat.angle;
+  if (Math.abs(a) > 0.05) sawTip = true;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const pivX = tipPlat.position.x + 100 * cos;
+  const pivY = tipPlat.position.y + 100 * sin;
+  maxDrift = Math.max(maxDrift, Math.hypot(pivX - 490, pivY - 300));
+}
+assert("offset-pivot-tips", sawTip, "platform never rotated");
+assert(
+  "offset-pivot-hinge-stable",
+  maxDrift < 1.5,
+  `maxDrift=${maxDrift.toFixed(3)}`,
+);
+
+// 3c) Local verts + body angle must NOT be double-rotated for drawing
+const local = tipPlat.localVertices;
+assert("local-verts-present", local.length >= 4, `n=${local.length}`);
+const ang = tipPlat.angle;
+const c = Math.cos(ang);
+const s = Math.sin(ang);
+const drawn = local.map((v) => ({
+  x: tipPlat.position.x + v.x * c - v.y * s,
+  y: tipPlat.position.y + v.x * s + v.y * c,
+}));
+const world = tipPlat.vertices;
+let maxVertErr = 0;
+for (let i = 0; i < world.length; i++) {
+  maxVertErr = Math.max(
+    maxVertErr,
+    Math.hypot(drawn[i].x - world[i].x, drawn[i].y - world[i].y),
+  );
+}
+assert(
+  "draw-transform-matches-physics",
+  maxVertErr < 0.01,
+  `err=${maxVertErr}`,
+);
+
 // 4) Simulate listener leak vs dispose (the re-enter duplication root cause)
 let live = 0;
 const handlers = [];
