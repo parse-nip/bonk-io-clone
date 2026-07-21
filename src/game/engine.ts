@@ -27,71 +27,40 @@ import {
 } from "./physBody";
 
 /**
- * Movement / physics — Box2D (Planck) guided by the OSU bonk_v6 tutorial
- * and the wiki’s mass/momentum model.
+ * Tutorial physics (bonk_v6):
+ *   mass=3, g=9.8, thruster ±15 every arrow, dt=0.1,
+ *   blob_radius=25, floor `vy = -vy`, **no speed cap**.
+ *   Fnety = Fy - mass*g (explicit net force).
  *
- * Tutorial (p5): mass=3, g=9.8, thruster ±15 on every arrow, dt=0.1,
- * blob_radius=25, floor bounce `vy = -vy`, **no speed cap**, no air drag.
- * Net force is explicit: Fnety = Fy - mass*g, ax = Fx/mass.
- * Thrust/weight = 15/(3·9.8) ≈ 0.51 — below 1 so Up cannot hover.
- *
- * That sketch steps dt=0.1 every draw (~60 Hz) ≈ 6× wall-clock time, so we
- * keep the force ratios + mass/radius and set map gravity (~350–380) so
- * horizontal travel matches the tutorial’s on-screen pace (~200px / 1.5s).
- *
- * Momentum (wiki + tutorial): velocity is only changed by F/m and collisions.
- * Do **not** soft-cap horizontal speed — a cap was killing knockback coasts.
- * Heavy ≈ 2× mass → more momentum in collisions, much less accel (wiki).
- *
- * Pixel-scale gotcha: Box2D `Settings.maxTranslation` default 2 clamps |v|
- * to 120 at 60 Hz. Raise it for px/s gameplay.
+ * We keep the same ratios and map gravity (~350-380) so horizontal travel
+ * feels like the sketch (~200 px / 1.5 s).
  */
-Settings.maxTranslation = 12;
+
+Settings.maxTranslation = 12; // allow fast knockback
+
 export const PLAYER_RADIUS = 25;
-/** Target light mass from the tutorial (`mass = 3.0`). */
-export const PLAYER_MASS = 3;
-/** density = mass / (π r²) so ResetMassData yields PLAYER_MASS. */
+export const PLAYER_MASS = 3; // tutorial light mass
+
 const DISC_DENSITY = PLAYER_MASS / (Math.PI * PLAYER_RADIUS * PLAYER_RADIUS);
-/** Heavy doubles fixture density (wiki / client behaviour). */
-const HEAVY_DENSITY = DISC_DENSITY * 2;
-/**
- * Near-elastic disc (HTML5 client ~0.95; tutorial floor does `vy = -vy`).
- * Slightly under 1.0 so resting contacts can still settle.
- */
-const PLAYER_RESTITUTION = 0.94;
-/** Low player friction — don’t scrub horizontal momentum on platforms. */
-const PLAYER_FRICTION = 0.08;
-/** Client-like air drag (tutorial has none). Keep tiny so coasts persist. */
+const HEAVY_DENSITY = DISC_DENSITY * 2; // wiki heavy
+
+const PLAYER_RESTITUTION = 0.94; // near-elastic (tutorial floor bounce)
+const PLAYER_FRICTION = 0.08;    // low — keeps coasts alive
 const PLAYER_LINEAR_DAMPING = 0.01;
 const PLAYER_ANGULAR_DAMPING = 3.4;
-/**
- * Tutorial thruster / weight: 15 / (3 · 9.8) ≈ 0.51 on every axis.
- * Same |F| left/right/up/down — heavier feel than a near-weight strafe,
- * and Up still loses to gravity (Fnet = 0.51W - W < 0).
- */
-const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8);
-/**
- * Heavy: same thruster force budget vs *light* weight is too generous once
- * mass doubles — use ~half so accel drops hard (wiki: less maneuverable).
- */
+
+const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8); // ~0.51
 const HEAVY_THRUST_VS_LIGHT_WEIGHT = THRUST_VS_WEIGHT * 0.5;
-/**
- * Zero-g thruster ≈ tutorial wall-clock horizontal accel * mass (a≈178 → F≈534).
- */
+
 const ZERO_G_MOVE_FORCE = PLAYER_MASS * (THRUST_VS_WEIGHT * 350);
 const ZERO_G_HEAVY_MOVE_FORCE = ZERO_G_MOVE_FORCE * 0.35;
-/**
- * Grounded hop — tutorial starts bouncing with Up from rest (Box2D resting
- * contacts won’t do `vy = -vy` alone). Keep it punchy; gravity + 0.51 Up
- * still bring you down.
- */
+
 const JUMP_SPEED = 155;
 const HEAVY_JUMP_SPEED = 110;
-/** Lift the disc clear of the floor when hopping so we aren't overlapping. */
+
 const HOP_CLEARANCE_PX = 4;
-/** Only auto land-bounce when impact is meaningful (not every soft settle). */
 const LAND_BOUNCE_MIN_IMPACT = 40;
-/** Bonk blank-map fixture defaults (DemystifyBonk / client). */
+
 const DEFAULT_PLATFORM_DENSITY = 0.3;
 const DEFAULT_PLATFORM_FRICTION = 0.3;
 const DEFAULT_PLATFORM_RESTITUTION = 0.8;
@@ -597,8 +566,7 @@ export class BonkEngine {
       const f = heavy ? ZERO_G_HEAVY_MOVE_FORCE : ZERO_G_MOVE_FORCE;
       return { hx: f, hy: f };
     }
-    const lightMass = DISC_DENSITY * Math.PI * PLAYER_RADIUS * PLAYER_RADIUS;
-    const lightWeight = lightMass * gy;
+    const lightWeight = PLAYER_MASS * gy;
     const ratio = heavy ? HEAVY_THRUST_VS_LIGHT_WEIGHT : THRUST_VS_WEIGHT;
     const f = lightWeight * ratio;
     const scale = this.mode === "football" ? 1.25 : 1;

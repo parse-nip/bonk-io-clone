@@ -42,4 +42,6 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 4. What Box2D gravity vector does the real HTML5 client hard-code?
 5. Why does disc restitution `0.95` make `settle()` need many frames before tests plant the player?
 6. At 60 Hz with `maxTranslation = 2`, what is the max `|v|` Box2D allows? What happens to a `JUMP_SPEED` of 180?
-7. Why is vertical thruster weaker than horizontal in this clone?
+7. In the tutorial, why write `Fnety = Fy - mass*g` instead of only `ay = -g`?
+8. Why does a horizontal speed soft-cap destroy the “momentum matters” fantasy of bonk?
+9. Wiki: what tradeoff does holding Heavy (X) buy you?
