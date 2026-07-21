@@ -4,11 +4,13 @@
 
 ### What this is
 
-Single-service, client-only browser game (a bonk.io clone). Stack: Vite + TypeScript + Canvas 2D + `matter-js`. There is **no backend, no database, and no environment variables/secrets** — it's a static frontend served by Vite in dev.
+Single-service browser game (a bonk.io clone). Stack: Vite + TypeScript + Canvas 2D + `matter-js`. **Online multiplayer** uses a Cloudflare Worker + Durable Objects relay (`worker/`) with host-authoritative physics; local dev proxies `/api` and `/ws` from Vite to wrangler on port `8787`.
 
 ### Commands (see `package.json` scripts)
 
-- Run (dev): `npm run dev` — Vite dev server on port `5173` with `host: true` (see `vite.config.ts`). This is the command to use for development.
+- Run (dev, local only): `npm run dev` — Vite on port `5173` with `host: true`.
+- Run (online multiplayer dev): `npm run dev:full` — wrangler on `8787` + Vite (proxies `/api` + `/ws`). Requires a `dist/` folder; `dev:server` creates a placeholder if missing.
+- Deploy: `npm run deploy` — builds SPA to `dist/` then `wrangler deploy`.
 - Typecheck / "lint": `npx tsc --noEmit` (there is no ESLint config). The full `npm run build` runs `tsc && vite build`; use it only when you need a production bundle.
 - Headless smoke test: `npm run smoke` — runs `scripts/smoke.mjs`, a standalone Matter.js physics sanity check (prints a JSON result). It does not import the app's own engine.
 
@@ -19,3 +21,5 @@ Single-service, client-only browser game (a bonk.io clone). Stack: Vite + TypeSc
 - **Deterministic engine testing:** `src/game/engine.ts` (`BonkEngine`) is self-contained (only imports `matter-js` + local `maps`/`types`). You can bundle it headlessly with the esbuild that ships inside Vite — e.g. `node_modules/.bin/esbuild src/game/engine.ts --bundle --format=esm --platform=node --outfile=/tmp/engine.mjs` — then import it in a Node script, call `addPlayers`/`startRound`/`setInput`/`update`, and assert on `player.body.position`. This is the most reliable way to test gameplay logic without the UI.
 - **Round reset delay:** after all players fall off, the camera follows the falling bodies and the next round can take a while to reset. This is expected game behavior, not a hang.
 - **Favicon 404** in the console is harmless (no favicon is served).
+- **Online host tab must stay focused.** The host runs physics via rAF; if the host tab backgrounds, the match freezes for everyone.
+- **Snapshots use tutorial velocities** (`tutorial.vx/vy`), not Matter body velocity — world gravity is off.

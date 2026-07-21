@@ -7,4 +7,8 @@ dist
 .tmp-editor-*.mjs
 .tmp-editor-entry.ts
 .tmp-tutorial-physics.mjs
+.tmp-multiplayer-engine.mjs
 .tmp/
+.wrangler
+.dev.vars
+worker-configuration.d.ts
