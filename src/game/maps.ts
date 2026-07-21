@@ -8,7 +8,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "classic",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 20 },
+    gravity: { x: 0, y: 350 },
     killY: 560,
     killPadding: 80,
     shapes: [
@@ -27,17 +27,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         static: false,
       },
     ],
-    // Rest Y ≈ platform top (276) - radius 12 → ~264. Keep spawns close so
-    // Box2D disc restitution 0.95 doesn't yeet players off on round start.
+    // Rest Y ≈ platform top (276) - radius 25 → ~251.
     spawns: [
-      { x: 300, y: 250 },
-      { x: 390, y: 245 },
-      { x: 480, y: 250 },
-      { x: 340, y: 248 },
-      { x: 440, y: 248 },
-      { x: 390, y: 240 },
-      { x: 270, y: 252 },
-      { x: 510, y: 252 },
+      { x: 300, y: 240 },
+      { x: 390, y: 235 },
+      { x: 480, y: 240 },
+      { x: 340, y: 238 },
+      { x: 440, y: 238 },
+      { x: 390, y: 230 },
+      { x: 270, y: 242 },
+      { x: 510, y: 242 },
     ],
   },
   {
@@ -47,7 +46,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "any",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 20 },
+    gravity: { x: 0, y: 350 },
     killY: 560,
     killPadding: 40,
     shapes: [
@@ -63,16 +62,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         restitution: 0.5,
       },
     ],
-    // Platform top 342 → rest ~330
+    // Platform top 342 → rest ~317 (r=25)
     spawns: [
-      { x: 220, y: 318 },
-      { x: 320, y: 318 },
-      { x: 420, y: 318 },
-      { x: 520, y: 318 },
-      { x: 270, y: 318 },
-      { x: 470, y: 318 },
-      { x: 370, y: 315 },
-      { x: 570, y: 318 },
+      { x: 220, y: 305 },
+      { x: 320, y: 305 },
+      { x: 420, y: 305 },
+      { x: 520, y: 305 },
+      { x: 270, y: 305 },
+      { x: 470, y: 305 },
+      { x: 370, y: 302 },
+      { x: 570, y: 305 },
     ],
   },
   {
@@ -82,7 +81,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "any",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 20 },
+    gravity: { x: 0, y: 350 },
     killY: 560,
     killPadding: 50,
     shapes: [
@@ -120,16 +119,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         restitution: 0.4,
       },
     ],
-    // Tower tops ~260 → rest ~248; center shelf top 408 → rest ~396
+    // Tower tops ~260 → rest ~235; center shelf top 408 → rest ~383
     spawns: [
-      { x: 250, y: 235 },
-      { x: 530, y: 235 },
-      { x: 220, y: 238 },
-      { x: 560, y: 238 },
-      { x: 390, y: 385 },
-      { x: 280, y: 235 },
-      { x: 500, y: 235 },
-      { x: 390, y: 390 },
+      { x: 250, y: 222 },
+      { x: 530, y: 222 },
+      { x: 220, y: 225 },
+      { x: 560, y: 225 },
+      { x: 390, y: 370 },
+      { x: 280, y: 222 },
+      { x: 500, y: 222 },
+      { x: 390, y: 375 },
     ],
   },
   {
@@ -139,7 +138,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "classic",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 22 },
+    gravity: { x: 0, y: 380 },
     killY: 560,
     killPadding: 60,
     shapes: [
@@ -155,16 +154,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         restitution: 0.35,
       },
     ],
-    // Beam top ~309 → rest ~297
+    // Beam top ~309 → rest ~284 (r=25)
     spawns: [
-      { x: 260, y: 285 },
-      { x: 330, y: 285 },
-      { x: 400, y: 285 },
-      { x: 470, y: 285 },
-      { x: 520, y: 285 },
-      { x: 300, y: 282 },
-      { x: 450, y: 282 },
-      { x: 390, y: 280 },
+      { x: 260, y: 272 },
+      { x: 330, y: 272 },
+      { x: 400, y: 272 },
+      { x: 470, y: 272 },
+      { x: 520, y: 272 },
+      { x: 300, y: 270 },
+      { x: 450, y: 270 },
+      { x: 390, y: 268 },
     ],
   },
   {
@@ -174,7 +173,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "grapple",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 18 },
+    gravity: { x: 0, y: 320 },
     killY: 580,
     killPadding: 70,
     shapes: [
@@ -209,16 +208,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         restitution: 0.65,
       },
     ],
-    // Side circles top ~300 → rest ~288; center top ~210 → rest ~198
+    // Side circles top ~300 → rest ~275; center top ~210 → rest ~185
     spawns: [
-      { x: 200, y: 275 },
-      { x: 390, y: 185 },
-      { x: 580, y: 275 },
-      { x: 250, y: 278 },
-      { x: 530, y: 278 },
-      { x: 330, y: 190 },
-      { x: 450, y: 190 },
-      { x: 390, y: 180 },
+      { x: 200, y: 262 },
+      { x: 390, y: 172 },
+      { x: 580, y: 262 },
+      { x: 250, y: 265 },
+      { x: 530, y: 265 },
+      { x: 330, y: 175 },
+      { x: 450, y: 175 },
+      { x: 390, y: 168 },
     ],
   },
   {
@@ -302,7 +301,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "arrows",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 20 },
+    gravity: { x: 0, y: 350 },
     killY: 560,
     killPadding: 40,
     shapes: [
@@ -336,16 +335,16 @@ export const BUILTIN_MAPS: MapDef[] = [
         static: true,
       },
     ],
-    // Main lane top ~365 → rest ~353; side pads top ~290 → rest ~278
+    // Main lane top ~365 → rest ~340; side pads top ~290 → rest ~265
     spawns: [
-      { x: 160, y: 265 },
-      { x: 620, y: 265 },
-      { x: 250, y: 340 },
-      { x: 530, y: 340 },
-      { x: 390, y: 340 },
-      { x: 300, y: 340 },
-      { x: 480, y: 340 },
-      { x: 390, y: 335 },
+      { x: 160, y: 252 },
+      { x: 620, y: 252 },
+      { x: 250, y: 328 },
+      { x: 530, y: 328 },
+      { x: 390, y: 328 },
+      { x: 300, y: 328 },
+      { x: 480, y: 328 },
+      { x: 390, y: 322 },
     ],
   },
 ];

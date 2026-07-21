@@ -25,42 +25,48 @@ import {
 } from "./physBody";
 
 /**
- * Movement / physics — HTML5 bonk.io Box2D model (Planck.js).
+ * Movement / physics — Box2D (Planck) with OSU bonk_v6 tutorial *feel*.
  *
- * Confirmed from live client bundle `js/alpha2s.js` (2026-07-21):
- * - World gravity hard-coded `(0, 20)` (`new b2World(new b2Vec2(0, 20))`)
- * - Disc fixture: density `0.001337`, restitution `0.95`, filter category `1`
- * - Disc body: linearDamping `0.01`, angularDamping `3.4`
- * - Player circle radius in map units equals `ppm` (default `12`)
- * - Controls: continuous ApplyForce thrusters on L/R/U/D (not grounded jump)
- * - Heavy ≈ 2× mass with reduced thruster authority
+ * Tutorial sketch (p5 / Processing): mass=3, g=9.8, thrust=±15, dt=0.1,
+ * blob_radius=25. That sketch advances dt=0.1 every draw frame (~60 Hz), so
+ * wall-clock motion is much snappier than integrating the same constants at
+ * real-time 1/60. We keep the tutorial force ratios and radius/mass, but set
+ * world gravity so horizontal accel matches the tutorial's on-screen pace:
  *
- * Map coords == Box2D meters (same as bonk). Canvas Y+ is down, so +Y gravity.
+ *   tutorial wall travel ≈ 200px in 1.5s → a ≈ 178
+ *   THRUST/WEIGHT = 15/(3*9.8) ≈ 0.51 → g ≈ 350
+ *
+ * Box2D still owns collisions (disc restitution / damping from the HTML5 client).
+ * Canvas Y+ is down, so +Y gravity.
  */
-export const PLAYER_RADIUS = 12;
-/** Real client disc fixture density. */
-const DISC_DENSITY = 0.001337;
+export const PLAYER_RADIUS = 25;
+/** Target light mass from the tutorial (`mass = 3.0`). */
+export const PLAYER_MASS = 3;
+/** density = mass / (π r²) so ResetMassData yields PLAYER_MASS. */
+const DISC_DENSITY = PLAYER_MASS / (Math.PI * PLAYER_RADIUS * PLAYER_RADIUS);
 /** Heavy doubles fixture density (wiki / client behaviour). */
 const HEAVY_DENSITY = DISC_DENSITY * 2;
-/** Disc restitution from client fixture. */
+/** Disc restitution from HTML5 client fixture (~0.95). */
 const PLAYER_RESTITUTION = 0.95;
 /** Low player friction; platforms carry most sliding resistance. */
 const PLAYER_FRICTION = 0.1;
 const PLAYER_LINEAR_DAMPING = 0.01;
 const PLAYER_ANGULAR_DAMPING = 3.4;
 /**
- * Thruster as a fraction of *light* body weight. Must stay < 1 or holding Up
- * lets you fly (real bonk: thrust < weight; you bounce, not hover).
+ * Tutorial: thrust 15 / weight (3*9.8) ≈ 0.51. Must stay < 1 or Up flies.
  */
-const THRUST_VS_WEIGHT = 0.78;
-/** Heavy thruster vs light weight — much weaker acceleration while heavy. */
-const HEAVY_THRUST_VS_WEIGHT = 0.28;
-/** Absolute thruster when map gravity is 0 (Football). */
-const ZERO_G_MOVE_FORCE = 8;
-const ZERO_G_HEAVY_MOVE_FORCE = 2.8;
-/** Soft cap — high enough that freefall under g=20 still clears kill zones. */
-const MAX_SPEED = 55;
-const HEAVY_MAX_SPEED = 35;
+const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8);
+/** Heavy thruster vs light weight — much weaker while heavy. */
+const HEAVY_THRUST_VS_WEIGHT = THRUST_VS_WEIGHT * (0.28 / 0.78);
+/**
+ * Zero-g thruster ≈ tutorial ax * mass with wall-clock match (a≈178).
+ * 178 * 3 ≈ 534.
+ */
+const ZERO_G_MOVE_FORCE = 534;
+const ZERO_G_HEAVY_MOVE_FORCE = ZERO_G_MOVE_FORCE * (0.28 / 0.78);
+/** Soft cap — high enough for snappy tutorial-scale speeds. */
+const MAX_SPEED = 140;
+const HEAVY_MAX_SPEED = 90;
 /** Bonk blank-map fixture defaults (DemystifyBonk / client). */
 const DEFAULT_PLATFORM_DENSITY = 0.3;
 const DEFAULT_PLATFORM_FRICTION = 0.3;

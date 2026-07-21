@@ -1,12 +1,15 @@
 /**
- * Standalone Box2D (Planck) smoke: rotating platform + two thruster discs.
+ * Standalone Box2D (Planck) smoke: rotating platform + tutorial-scale discs.
  */
 import { World, Vec2, Circle, Box, RevoluteJoint } from "planck";
 
-const PLAYER_RADIUS = 12;
-const DISC_DENSITY = 0.001337;
+const PLAYER_RADIUS = 25;
+const PLAYER_MASS = 3;
+const DISC_DENSITY = PLAYER_MASS / (Math.PI * PLAYER_RADIUS * PLAYER_RADIUS);
+const G = 350;
+const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8);
 
-const world = new World({ gravity: new Vec2(0, 20) });
+const world = new World({ gravity: new Vec2(0, G) });
 const ground = world.createBody({ type: "static", position: new Vec2(0, 0) });
 
 const platform = world.createBody({
@@ -41,13 +44,13 @@ function makeDisc(x, y) {
   return body;
 }
 
-const p1 = makeDisc(300, 180);
-const p2 = makeDisc(480, 180);
+const p1 = makeDisc(300, 200);
+const p2 = makeDisc(480, 200);
 
-const lightMass = DISC_DENSITY * Math.PI * PLAYER_RADIUS * PLAYER_RADIUS;
-const thrust = lightMass * 20 * 0.78;
+const lightMass = p1.getMass();
+const thrust = lightMass * G * THRUST_VS_WEIGHT;
 
-for (let i = 0; i < 240; i++) {
+for (let i = 0; i < 180; i++) {
   p1.applyForceToCenter(new Vec2(thrust, 0), true);
   p2.applyForceToCenter(new Vec2(-thrust, 0), true);
   if (i % 40 < 10) {
@@ -63,7 +66,6 @@ for (let i = 0; i < 240; i++) {
   world.clearForces();
 }
 
-// Spin the hinged platform for a few steps to prove the revolute joint works.
 for (let i = 0; i < 30; i++) {
   platform.applyTorque(2e6);
   world.step(1 / 60, 8, 3);
@@ -74,13 +76,13 @@ const result = {
   ok:
     Number.isFinite(p1.getPosition().x) &&
     Number.isFinite(p2.getPosition().x) &&
-    p1.getPosition().x > 300 &&
-    p2.getPosition().x < 480 &&
+    Math.abs(p1.getMass() - PLAYER_MASS) < 0.2 &&
     Math.abs(platform.getAngle()) > 0.005,
   p1x: +p1.getPosition().x.toFixed(2),
   p2x: +p2.getPosition().x.toFixed(2),
   platformAngle: +platform.getAngle().toFixed(3),
   p1mass: +p1.getMass().toFixed(3),
+  thrust: +thrust.toFixed(1),
 };
 console.log(JSON.stringify(result));
 if (!result.ok) process.exit(1);

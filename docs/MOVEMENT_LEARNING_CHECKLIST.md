@@ -22,14 +22,13 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 ## 3) The solution in this clone
 - [ ] Physics engine is **Planck.js** (Box2D), not Matter.js.
 - [ ] `applyForceToCenter` thrusters on Left/Right/Up/Down every frame.
-- [ ] Map gravity is true Box2D: typically `{ x: 0, y: 20 }`.
-- [ ] Disc player: density **0.001337**, restitution **0.95**, dampings **0.01 / 3.4**, radius **12**.
+- [ ] Tuned to **OSU bonk_v6 tutorial wall-clock feel**: mass **3**, radius **25**, thrust/weight = **15/(3·9.8)≈0.51**, map gravity ≈ **350** (because tutorial `dt=0.1` at 60fps is ~6× time-accelerated — raw `g=9.8` felt sluggish in real-time Box2D).
+- [ ] Disc restitution **0.95**, dampings **0.01 / 3.4** (HTML5 client).
 - [ ] Heavy = **2× density**; weaker thruster vs light weight.
-- [ ] `THRUST_VS_WEIGHT < 1` so Up **cannot hover/fly** — bounce with Up/Down like real bonk.
-- [ ] Soft speed caps keep continuous thrust readable but stay high enough for freefall kills.
+- [ ] `THRUST_VS_WEIGHT < 1` so Up **cannot hover/fly**.
 - [ ] Off a platform edge → real freefall past `killY` → elimination.
 - [ ] Snapshots carry **Box2D** velocities (needed for knockback online).
-- [ ] `PhysBody` adapts Planck bodies for renderer / tests (`position`, `velocity`, `vertices`, …).
+- [ ] `PhysBody` adapts Planck bodies for renderer / tests.
 
 ## 4) Broader context
 - [ ] Matter was a stand-in; shipping Box2D matches the original client’s solver and constants.
