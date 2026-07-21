@@ -43,6 +43,8 @@ export class GameRoom extends DurableObject<Env> {
   private hostId: string | null = null;
   private room: NetRoomConfig = { ...DEFAULT_ROOM };
   private inGame = false;
+  /** True after a host has called create — joins are rejected until then. */
+  private opened = false;
   private players = new Map<string, Attachment>();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -53,12 +55,14 @@ export class GameRoom extends DurableObject<Env> {
         hostId: string | null;
         room: NetRoomConfig;
         inGame: boolean;
+        opened: boolean;
       }>("meta");
       if (stored) {
         this.code = stored.code;
         this.hostId = stored.hostId;
         this.room = stored.room;
         this.inGame = stored.inGame;
+        this.opened = stored.opened ?? false;
       }
       // Restore player attachments from hibernated sockets
       for (const ws of this.ctx.getWebSockets()) {
@@ -74,6 +78,7 @@ export class GameRoom extends DurableObject<Env> {
       hostId: this.hostId,
       room: this.room,
       inGame: this.inGame,
+      opened: this.opened,
     });
   }
 
@@ -196,6 +201,7 @@ export class GameRoom extends DurableObject<Env> {
     }
     this.room = { ...DEFAULT_ROOM, ...msg.room, bots: 0 };
     this.inGame = false;
+    this.opened = true;
     const player = this.attachPlayer(ws, msg.name, msg.guest, msg.skin);
     this.hostId = player.playerId;
     this.send(ws, {
@@ -213,6 +219,11 @@ export class GameRoom extends DurableObject<Env> {
     ws: WebSocket,
     msg: Extract<ClientMessage, { type: "join" }>,
   ) {
+    if (!this.opened) {
+      this.send(ws, { type: "error", message: "Room not found" });
+      ws.close(4004, "not found");
+      return;
+    }
     if (this.inGame) {
       this.send(ws, { type: "error", message: "Match already in progress" });
       ws.close(4000, "in game");
@@ -226,7 +237,6 @@ export class GameRoom extends DurableObject<Env> {
     if (!this.code) this.code = msg.code || uid();
 
     const player = this.attachPlayer(ws, msg.name, msg.guest, msg.skin);
-    if (!this.hostId) this.hostId = player.playerId;
 
     this.send(ws, {
       type: "welcome",

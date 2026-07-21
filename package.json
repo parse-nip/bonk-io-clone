@@ -13,6 +13,8 @@
     "smoke": "node scripts/smoke.mjs",
     "test:movement": "node scripts/movement.mjs",
     "test:tutorial": "node scripts/tutorial-physics.mjs",
+    "test:multiplayer": "node scripts/multiplayer-e2e.mjs",
+    "test:multiplayer:browser": "node scripts/multiplayer-browser-e2e.mjs",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
@@ -21,8 +23,10 @@
   "devDependencies": {
     "@types/matter-js": "^0.19.8",
     "concurrently": "^9.2.0",
+    "puppeteer-core": "^25.3.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
-    "wrangler": "^4.26.0"
+    "wrangler": "^4.26.0",
+    "ws": "^8.21.1"
   }
 }

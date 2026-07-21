@@ -462,6 +462,23 @@ function disconnectOnline() {
   snapBuffer.clear();
 }
 
+function refreshLobbyPlayerList(): boolean {
+  const list = document.querySelector(".lobby-layout .player-list");
+  if (!list) return false;
+  list.innerHTML = "";
+  for (const p of state.lobbyPlayers) {
+    const row = el("div", "player-row");
+    row.innerHTML = `
+      <div class="dot" style="background:${p.skin.baseColor}"></div>
+      <span>${escapeHtml(p.name)}${p.isBot ? " (bot)" : ""}${p.id === state.profile.id ? " (you)" : ""}</span>
+      <span style="color:${TEAM_COLORS[p.team]}">${teamLabel(p.team)}</span>
+      <span class="ready">${p.ready ? "✓" : ""}</span>
+    `;
+    list.appendChild(row);
+  }
+  return true;
+}
+
 function handleServerMessage(msg: ServerMessage) {
   switch (msg.type) {
     case "welcome":
@@ -490,7 +507,9 @@ function handleServerMessage(msg: ServerMessage) {
         ready: p.ready,
         isBot: p.isBot,
       }));
-      if (state.screen === "lobby") render();
+      if (state.screen === "lobby") {
+        if (!refreshLobbyPlayerList()) render();
+      }
       break;
     case "started":
       state.room = {
@@ -593,17 +612,7 @@ function makeLobby() {
   wrap.appendChild(right);
 
   const refreshList = () => {
-    list.innerHTML = "";
-    for (const p of state.lobbyPlayers) {
-      const row = el("div", "player-row");
-      row.innerHTML = `
-        <div class="dot" style="background:${p.skin.baseColor}"></div>
-        <span>${escapeHtml(p.name)}${p.isBot ? " (bot)" : ""}${p.id === state.profile.id ? " (you)" : ""}</span>
-        <span style="color:${TEAM_COLORS[p.team]}">${teamLabel(p.team)}</span>
-        <span class="ready">${p.ready ? "✓" : ""}</span>
-      `;
-      list.appendChild(row);
-    }
+    refreshLobbyPlayerList();
   };
 
   queueMicrotask(() => {
