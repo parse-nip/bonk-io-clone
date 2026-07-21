@@ -1,6 +1,7 @@
 /**
  * Headless movement regression for thruster-based bonk physics:
- * spawn freeze, horizontal/vertical thrusters, air control, fall-off.
+ * spawn freeze, horizontal thrusters, no sustained flight, up slows fall,
+ * down presses faster, air strafe, fall-off.
  */
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -77,25 +78,42 @@ const startLeftX = flatLeft.players[0].body.position.x;
 drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
-// 3) Up thruster lifts off the floor.
-const up = makeEngine("flat");
-settle(up);
-const floorY = up.players[0].body.position.y;
+// 3) Holding Up from the floor must NOT allow sustained flight.
+const noFly = makeEngine("flat");
+settle(noFly);
+const floorY = noFly.players[0].body.position.y;
 let minY = floorY;
-for (let i = 0; i < 90; i++) {
-  up.setInput("p1", { ...emptyInput(), up: true });
-  up.update(1 / 60);
-  minY = Math.min(minY, up.players[0].body.position.y);
+for (let i = 0; i < 120; i++) {
+  noFly.setInput("p1", { ...emptyInput(), up: true });
+  noFly.update(1 / 60);
+  minY = Math.min(minY, noFly.players[0].body.position.y);
 }
-const lifted = floorY - minY > 15;
+const liftPx = floorY - minY;
+const cannotFly = liftPx < 40;
 
-// 4) Down thruster increases downward speed while airborne.
+// 4) Up thruster slows a fall (still descending, but less than freefall).
+function fallDistance(holdUp) {
+  const eng = makeEngine("flat");
+  settle(eng);
+  const p = eng.players[0];
+  Matter.Body.setPosition(p.body, { x: 390, y: 120 });
+  Matter.Body.setVelocity(p.body, { x: 0, y: 0 });
+  const y0 = p.body.position.y;
+  for (let i = 0; i < 45; i++) {
+    eng.setInput("p1", holdUp ? { ...emptyInput(), up: true } : emptyInput());
+    eng.update(1 / 60);
+  }
+  return p.body.position.y - y0;
+}
+const dropFree = fallDistance(false);
+const dropUp = fallDistance(true);
+const upSlowsFall = dropUp > 10 && dropUp < dropFree - 5;
+
+// 5) Down thruster increases downward speed while airborne.
 const down = makeEngine("flat");
 settle(down);
-for (let i = 0; i < 30; i++) {
-  down.setInput("p1", { ...emptyInput(), up: true });
-  down.update(1 / 60);
-}
+Matter.Body.setPosition(down.players[0].body, { x: 390, y: 140 });
+Matter.Body.setVelocity(down.players[0].body, { x: 0, y: 0 });
 const midY = down.players[0].body.position.y;
 let maxY = midY;
 for (let i = 0; i < 40; i++) {
@@ -105,22 +123,19 @@ for (let i = 0; i < 40; i++) {
 }
 const pressedDown = maxY - midY > 10;
 
-// 5) Full air control: horizontal thrust while airborne.
+// 6) Full air control: horizontal thrust while airborne.
 const air = makeEngine("flat");
 settle(air);
-for (let i = 0; i < 40; i++) {
-  air.setInput("p1", { ...emptyInput(), up: true });
-  air.update(1 / 60);
-}
+Matter.Body.setPosition(air.players[0].body, { x: 390, y: 140 });
+Matter.Body.setVelocity(air.players[0].body, { x: 0, y: 0 });
 const airX0 = air.players[0].body.position.x;
 drive(air, { ...emptyInput(), left: true }, 60);
 const airDx = air.players[0].body.position.x - airX0;
 
-// 6) Fall off Flat Arena past the platform — no invisible full-width floor.
+// 7) Fall off Flat Arena past the platform — no invisible full-width floor.
 const fall = makeEngine("flat");
 settle(fall);
 const fallP = fall.players[0];
-// Place just past the right edge of the 520-wide platform centered at 390.
 Matter.Body.setPosition(fallP.body, { x: 670, y: 300 });
 Matter.Body.setVelocity(fallP.body, { x: 2, y: 0 });
 let fellPastFloor = false;
@@ -140,7 +155,8 @@ const result = {
     orbitPinned &&
     dxRight > 40 &&
     dxLeft < -40 &&
-    lifted &&
+    cannotFly &&
+    upSlowsFall &&
     pressedDown &&
     airDx < -20 &&
     fellOff &&
@@ -149,8 +165,11 @@ const result = {
   orbitPinned,
   dxRight: +dxRight.toFixed(1),
   dxLeft: +dxLeft.toFixed(1),
-  liftPx: +(floorY - minY).toFixed(1),
-  lifted,
+  liftPx: +liftPx.toFixed(1),
+  cannotFly,
+  dropFree: +dropFree.toFixed(1),
+  dropUp: +dropUp.toFixed(1),
+  upSlowsFall,
   downDropPx: +(maxY - midY).toFixed(1),
   pressedDown,
   airDx: +airDx.toFixed(1),

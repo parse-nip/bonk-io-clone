@@ -11,7 +11,7 @@ Use this to verify you understand why movement felt cooked and what we changed.
 ## 2) The solution
 - [ ] Restore **Matter.js thrusters**: `applyForce` on Left/Right/Up/Down every frame.
 - [ ] Map gravity is back: `gravity: { x, y, scale: 0.001 }` from the map def.
-- [ ] `MOVE_FORCE` sits slightly above map weight so Up/Down can leave the floor without rocketing.
+- [ ] `MOVE_FORCE` stays **below** map weight (~0.0012) so Up slows a fall / shapes bounces but cannot sustain flight (same ratio idea as tutorial thrust 15 < mass×g 29.4).
 - [ ] Soft speed caps (`MAX_SPEED` / `HEAVY_MAX_SPEED`) keep continuous thrust readable.
 - [ ] Off a platform edge → real freefall past `killY` → elimination.
 
@@ -22,5 +22,5 @@ Use this to verify you understand why movement felt cooked and what we changed.
 
 ## Quiz yourself
 1. Why did `state.x > 0 && state.x < width` prevent falling off Flat Arena?
-2. With Matter gravity `y: 1.2` and `scale: 0.001`, roughly what weight does mass `1` feel? Why is `MOVE_FORCE = 0.00138`?
+2. With Matter gravity `y: 1.2` and `scale: 0.001`, roughly what weight does mass `1` feel? Why must `MOVE_FORCE` stay **below** that?
 3. Why zeroing velocity after kinematic steps broke player–player bonks?

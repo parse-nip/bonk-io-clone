@@ -13,10 +13,12 @@ import type { GameSnapshot } from "../../shared/protocol";
 const PLAYER_RADIUS = 18;
 const BASE_MASS = 1;
 const HEAVY_MASS = 2.4;
-// Continuous thruster force (all 4 directions). Slightly above typical map
-// weight (~0.0012) so Up/Down can leave the floor without rocketing.
-const MOVE_FORCE = 0.00138;
-const HEAVY_MOVE_FORCE = 0.00048;
+// Continuous thrusters (all 4 directions). Must stay BELOW typical map weight
+// (mass * gravity.y * scale ≈ 1 * 1.2 * 0.001 = 0.0012), matching bonk_v6
+// where thrust 15 < mass*g 29.4 — Up slows a fall / shapes a bounce, but
+// cannot sustain indefinite flight.
+const MOVE_FORCE = 0.00095;
+const HEAVY_MOVE_FORCE = 0.00042;
 const MAX_SPEED = 11;
 const HEAVY_MAX_SPEED = 7.2;
 
