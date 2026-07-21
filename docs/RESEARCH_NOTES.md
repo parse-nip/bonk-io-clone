@@ -27,20 +27,20 @@ Research window: ~20 minutes before implementation (2026-07-19).
 - **Disc fixture (client):** density ≈ `0.001337`, restitution ≈ `0.95`; body linearDamping ≈ `0.01`
 - Circle hitboxes (skin does not change collision); player radius in map units = `ppm` (default 12)
 - Continuous thrusters on arrow keys (all 4 directions), not grounded jump
+- OSU tutorial model (feel reference): `mass=3`, `g=9.8`, `|F|=15`, `dt=0.1`, bounce `vy=-vy`, **no speed cap** — momentum is the lesson (`Fnety = Fy - mass*g`)
 - High platform friction relative to real world; player–player bounce is energetic
-- Heavy: ~2× mass, reduced acceleration; activate ~200–300 ms before contact, release after
+- Heavy: ~2× mass, reduced acceleration; activate ~200–300 ms before contact, release after (wiki: bash farther, harder to push, less maneuverable)
 - Walls/platforms ≈ infinite mass when stationary; bounce preserves more energy than soft materials
 - Map scale via `ppm` (pixels-per-meter style); default blank map `ppm: 12`
 - Platform defaults from map format: friction ~0.3, restitution ~0.8, density ~0.3
 
 ### Clone mapping (Planck.js / Box2D) — updated 2026-07-21
-- Map coords == Box2D meters (~780×520), same convention as bonk map units
-- World gravity from map def (builtins use `y: 18–22`, football `0`; client default `(0, 20)`)
-- Disc: density `0.001337`, restitution `0.95`, linearDamping `0.01`, angularDamping `3.4`, radius `12`
-- `applyForceToCenter` thrusters every frame; thruster ≈ 78% of light weight (no flight)
-- Heavy = 2× fixture density; soft speed caps kept high for freefall kills
-- Do **not** use OSU tutorial kinematic integrator in the live engine (invisible floor + dead knockback)
-- Confirmed live in obfuscated client `https://bonk.io/js/alpha2s.js`: `new …(new …(0,20))` world ctor + fixture `0.001337` / `0.95`
+- Live engine uses **tutorial-scale** mass/radius (3 / 25) + map gravity ≈ **360** so wall-clock pace matches the sketch (its `dt=0.1` @ 60fps is ~6× time)
+- Thruster/weight ≈ **0.51** on every axis; **no horizontal speed soft-cap** (coasts / knockback momentum)
+- Disc: restitution ~0.94, linearDamping 0.01, angularDamping 3.4; Heavy = 2× density
+- Grounded hop after `world.step` (Box2D resting contacts won’t do tutorial `vy=-vy` alone)
+- Do **not** use the OSU kinematic integrator in the live loop (invisible full-width floor + dead knockback)
+- HTML5 client still confirmed: world gravity `(0, 20)`, fixture density `0.001337`, restitution `0.95` in `js/alpha2s.js`
 
 ## Input bitfield (from DemystifyBonk)
 `Left=1, Right=2, Up=4, Down=8, Heavy=16, Special=32`
