@@ -97,10 +97,19 @@ drive(flatLeft, { ...emptyInput(), left: true });
 const dxLeft = flatLeft.players[0].body.position.x - startLeftX;
 
 // 3) Up slows a fall but does not overcome gravity.
+function clearHopAssist(p) {
+  p.wasGrounded = false;
+  p.prevUp = false;
+  p.jumpBuffer = 0;
+  p.coyote = 0;
+  p.pendingHop = null;
+  p.impactVy = 0;
+}
 const fallSlow = makeEngine("flat");
 settle(fallSlow);
 fallSlow.players[0].body.setPosition(390, 120);
 fallSlow.players[0].body.setVelocity(0, 0);
+clearHopAssist(fallSlow.players[0]);
 for (let i = 0; i < 30; i++) {
   fallSlow.setInput("p1", { ...emptyInput(), up: true });
   fallSlow.update(1 / 60);
@@ -111,6 +120,7 @@ const fallFast = makeEngine("flat");
 settle(fallFast);
 fallFast.players[0].body.setPosition(390, 120);
 fallFast.players[0].body.setVelocity(0, 0);
+clearHopAssist(fallFast.players[0]);
 for (let i = 0; i < 30; i++) {
   fallFast.setInput("p1", emptyInput());
   fallFast.update(1 / 60);
@@ -143,6 +153,7 @@ const noFly = makeEngine("flat");
 settle(noFly);
 noFly.players[0].body.setPosition(390, 160);
 noFly.players[0].body.setVelocity(0, -20);
+clearHopAssist(noFly.players[0]);
 let peakY = noFly.players[0].body.position.y;
 for (let i = 0; i < 60; i++) {
   noFly.setInput("p1", { ...emptyInput(), up: true });

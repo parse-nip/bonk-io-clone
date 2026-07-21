@@ -55,11 +55,15 @@ const HEAVY_THRUST_VS_LIGHT_WEIGHT = THRUST_VS_WEIGHT * 0.5;
 const ZERO_G_MOVE_FORCE = PLAYER_MASS * (THRUST_VS_WEIGHT * 350);
 const ZERO_G_HEAVY_MOVE_FORCE = ZERO_G_MOVE_FORCE * 0.35;
 
-const JUMP_SPEED = 155;
-const HEAVY_JUMP_SPEED = 110;
+/** Punchy hop — snappy pop; buffer/coyote handle “responsive” timing. */
+const JUMP_SPEED = 195;
+const HEAVY_JUMP_SPEED = 135;
 
 const HOP_CLEARANCE_PX = 4;
-const LAND_BOUNCE_MIN_IMPACT = 40;
+/** Frames to honor an early Up press before landing (input buffer). */
+const JUMP_BUFFER_FRAMES = 10;
+/** Frames after leaving a ledge where Up still hops (coyote time). */
+const COYOTE_FRAMES = 6;
 
 const DEFAULT_PLATFORM_DENSITY = 0.3;
 const DEFAULT_PLATFORM_FRICTION = 0.3;
@@ -92,6 +96,10 @@ export interface EnginePlayer {
   impactVy: number;
   /** Hop speed queued during control; applied after world.step. */
   pendingHop: number | null;
+  /** Remaining frames to accept a pre-land Up press. */
+  jumpBuffer: number;
+  /** Remaining frames after leaving ground where Up still hops. */
+  coyote: number;
 }
 
 export interface ArrowProj {
@@ -371,6 +379,8 @@ export class BonkEngine {
         prevUp: false,
         impactVy: 0,
         pendingHop: null,
+        jumpBuffer: 0,
+        coyote: 0,
       };
     });
   }
@@ -646,17 +656,27 @@ export class BonkEngine {
       this.applyThrusterForce(p, hx, hy);
     }
 
-    // Queue grounded hop — applied AFTER world.step so the contact solver
-    // can't immediately cancel the upward velocity.
+    // Queue hop AFTER world.step so ground contacts don't eat the impulse.
+    // Buffer + coyote make Up feel responsive (early press / late ledge).
+    // Landing while holding Up also hops — tutorial "start bouncing" feel.
     p.pendingHop = null;
-    if (input.up && grounded && this.map.gravity.y > 1e-6) {
-      const justLanded = !p.wasGrounded;
+    if (input.up && !p.prevUp) p.jumpBuffer = JUMP_BUFFER_FRAMES;
+    else if (p.jumpBuffer > 0) p.jumpBuffer -= 1;
+
+    if (grounded) p.coyote = COYOTE_FRAMES;
+    else if (p.coyote > 0) p.coyote -= 1;
+
+    const canHop = grounded || p.coyote > 0;
+    if (input.up && canHop && this.map.gravity.y > 1e-6) {
+      const justLanded = grounded && !p.wasGrounded;
       const upPressed = !p.prevUp;
-      const hardLanding = justLanded && p.impactVy >= LAND_BOUNCE_MIN_IMPACT;
-      if (upPressed || hardLanding) {
+      const buffered = p.jumpBuffer > 0;
+      if (upPressed || justLanded || buffered) {
         const hop = heavy ? HEAVY_JUMP_SPEED : JUMP_SPEED;
         if (p.body.velocity.y > -hop * 0.55) {
           p.pendingHop = hop;
+          p.jumpBuffer = 0;
+          p.coyote = 0;
         }
       }
     }
