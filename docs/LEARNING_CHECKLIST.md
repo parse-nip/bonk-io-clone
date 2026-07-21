@@ -55,7 +55,7 @@ Use this to track understanding. Restate each item in your own words before mark
 
 - [ ] **Problem A (tiny UI):** `.stage` was capped at `780×520` with an aspect-ratio lock, so the whole site lived in a small centered window
 - [ ] **Why:** early “fixed game viewport” parity with classic bonk’s playfield size was applied to the *chrome*, not just the logical world
-- [ ] **Solution A:** stage fills `100vw×100vh`; renderer letterboxes the 780×520 world with uniform scale
+- [ ] **Solution A:** stage fills `100vw×100vh`; renderer stretches the 780×520 world to the canvas edge-to-edge
 - [ ] **Problem B (offset pivot “broken”):** physics hinged correctly, but `drawBody` translated/rotated *and* fed already-rotated world `vertices` → **double angle**. Center pivots looked “mostly ok” (just 2× tip); offset pivots looked completely wrong because the body origin orbits the hinge while the mesh spun 2×
 - [ ] **Solution B:** draw with `localVertices` + one body transform; RevoluteJoint uses explicit `localAnchorA/B`; editor angle edits keep world pivot fixed
 - [ ] **Impact:** fullscreen usable UI; rotating maps with off-center hinges look like they play

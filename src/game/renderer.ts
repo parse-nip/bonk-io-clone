@@ -26,17 +26,12 @@ export class GameRenderer {
 
   draw(engine: BonkEngine, localId: string) {
     const ctx = this.ctx;
-    // Uniform scale + letterbox so fullscreen does not stretch the arena.
-    const scale = Math.min(this.w / engine.width, this.h / engine.height);
-    const ox = (this.w - engine.width * scale) / 2;
-    const oy = (this.h - engine.height * scale) / 2;
-
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(0, 0, this.w, this.h);
-
+    // Stretch the logical 780×520 world to the full canvas so the stage
+    // (now 100vw×100vh) is actually used edge-to-edge.
+    const sx = this.w / engine.width;
+    const sy = this.h / engine.height;
     ctx.save();
-    ctx.translate(ox, oy);
-    ctx.scale(scale, scale);
+    ctx.scale(sx, sy);
 
     // background field
     ctx.fillStyle = "#2c2c2c";
