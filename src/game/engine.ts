@@ -27,23 +27,24 @@ import {
 } from "./physBody";
 
 /**
- * Movement / physics — Box2D (Planck) with OSU bonk_v6 tutorial *feel*.
+ * Movement / physics — Box2D (Planck) guided by the OSU bonk_v6 tutorial
+ * and the wiki’s mass/momentum model.
  *
- * Tutorial sketch (p5 / Processing): mass=3, g=9.8, thrust=±15, dt=0.1,
- * blob_radius=25. That sketch advances dt=0.1 every draw frame (~60 Hz), so
- * wall-clock motion is much snappier than integrating the same constants at
- * real-time 1/60. We keep the tutorial force ratios and radius/mass, but set
- * world gravity so horizontal accel matches the tutorial's on-screen pace:
+ * Tutorial (p5): mass=3, g=9.8, thruster ±15 on every arrow, dt=0.1,
+ * blob_radius=25, floor bounce `vy = -vy`, **no speed cap**, no air drag.
+ * Net force is explicit: Fnety = Fy - mass*g, ax = Fx/mass.
+ * Thrust/weight = 15/(3·9.8) ≈ 0.51 — below 1 so Up cannot hover.
  *
- *   tutorial wall travel ≈ 200px in 1.5s → a ≈ 178
- *   THRUST/WEIGHT = 15/(3*9.8) ≈ 0.51 → g ≈ 350
+ * That sketch steps dt=0.1 every draw (~60 Hz) ≈ 6× wall-clock time, so we
+ * keep the force ratios + mass/radius and set map gravity (~350–380) so
+ * horizontal travel matches the tutorial’s on-screen pace (~200px / 1.5s).
  *
- * Box2D still owns collisions (disc restitution / damping from the HTML5 client).
- * Canvas Y+ is down, so +Y gravity.
+ * Momentum (wiki + tutorial): velocity is only changed by F/m and collisions.
+ * Do **not** soft-cap horizontal speed — a cap was killing knockback coasts.
+ * Heavy ≈ 2× mass → more momentum in collisions, much less accel (wiki).
  *
- * Pixel-scale gotcha: Box2D caps per-step travel at Settings.maxTranslation
- * (default 2). At 60 Hz that clamps |v| to 120 — which silently crushed jumps
- * (vy=-180 → -120) and felt floaty/mushy. Raise it for px/s gameplay speeds.
+ * Pixel-scale gotcha: Box2D `Settings.maxTranslation` default 2 clamps |v|
+ * to 120 at 60 Hz. Raise it for px/s gameplay.
  */
 Settings.maxTranslation = 12;
 export const PLAYER_RADIUS = 25;
@@ -54,42 +55,38 @@ const DISC_DENSITY = PLAYER_MASS / (Math.PI * PLAYER_RADIUS * PLAYER_RADIUS);
 /** Heavy doubles fixture density (wiki / client behaviour). */
 const HEAVY_DENSITY = DISC_DENSITY * 2;
 /**
- * Slightly under client ~0.95 — full 0.95 + high g reads as a trampoline.
+ * Near-elastic disc (HTML5 client ~0.95; tutorial floor does `vy = -vy`).
+ * Slightly under 1.0 so resting contacts can still settle.
  */
-const PLAYER_RESTITUTION = 0.82;
-/** Low player friction; platforms carry most sliding resistance. */
-const PLAYER_FRICTION = 0.12;
-/** A bit of air drag so hops don't hang. */
-const PLAYER_LINEAR_DAMPING = 0.04;
+const PLAYER_RESTITUTION = 0.94;
+/** Low player friction — don’t scrub horizontal momentum on platforms. */
+const PLAYER_FRICTION = 0.08;
+/** Client-like air drag (tutorial has none). Keep tiny so coasts persist. */
+const PLAYER_LINEAR_DAMPING = 0.01;
 const PLAYER_ANGULAR_DAMPING = 3.4;
 /**
- * Strafe thruster vs light weight. Strong for snappy left/right; must stay < 1.
+ * Tutorial thruster / weight: 15 / (3 · 9.8) ≈ 0.51 on every axis.
+ * Same |F| left/right/up/down — heavier feel than a near-weight strafe,
+ * and Up still loses to gravity (Fnet = 0.51W - W < 0).
  */
-const HORIZONTAL_THRUST_VS_WEIGHT = 0.82;
+const THRUST_VS_WEIGHT = 15 / (PLAYER_MASS * 9.8);
 /**
- * Up/Down thruster vs weight — kept well below strafe so holding Up only
- * softens a fall (never near-cancels gravity into a float hang).
+ * Heavy: same thruster force budget vs *light* weight is too generous once
+ * mass doubles — use ~half so accel drops hard (wiki: less maneuverable).
  */
-const VERTICAL_THRUST_VS_WEIGHT = 0.32;
-/** Heavy thruster vs light weight. */
-const HEAVY_HORIZONTAL_THRUST_VS_WEIGHT = 0.3;
-const HEAVY_VERTICAL_THRUST_VS_WEIGHT = 0.12;
+const HEAVY_THRUST_VS_LIGHT_WEIGHT = THRUST_VS_WEIGHT * 0.5;
 /**
- * Zero-g thruster ≈ tutorial-scale horizontal accel * mass (a≈178 → F≈534).
+ * Zero-g thruster ≈ tutorial wall-clock horizontal accel * mass (a≈178 → F≈534).
  */
-const ZERO_G_MOVE_FORCE = 534;
-const ZERO_G_HEAVY_MOVE_FORCE = 190;
+const ZERO_G_MOVE_FORCE = PLAYER_MASS * (THRUST_VS_WEIGHT * 350);
+const ZERO_G_HEAVY_MOVE_FORCE = ZERO_G_MOVE_FORCE * 0.35;
 /**
- * Soft horizontal cap only — never clamp vertical or bounce/jump dies.
+ * Grounded hop — tutorial starts bouncing with Up from rest (Box2D resting
+ * contacts won’t do `vy = -vy` alone). Keep it punchy; gravity + 0.51 Up
+ * still bring you down.
  */
-const MAX_SPEED_X = 160;
-const HEAVY_MAX_SPEED_X = 100;
-/**
- * Grounded hop impulse (Y+ down → negative). Crisp pop; gravity + weak Up
- * thruster bring you down fast so it doesn't float.
- */
-const JUMP_SPEED = 200;
-const HEAVY_JUMP_SPEED = 130;
+const JUMP_SPEED = 155;
+const HEAVY_JUMP_SPEED = 110;
 /** Lift the disc clear of the floor when hopping so we aren't overlapping. */
 const HOP_CLEARANCE_PX = 4;
 /** Only auto land-bounce when impact is meaningful (not every soft settle). */
@@ -590,7 +587,10 @@ export class BonkEngine {
     }
   }
 
-  /** Thruster magnitudes: horizontal snappy, vertical weaker (less float). */
+  /**
+   * Tutorial-style thrusters: same |F| on every axis (Fx/Fy = ±15 sketch).
+   * Force is vs *light* weight so heavy (2× mass) accelerates ~half as hard.
+   */
   private thrusterForces(heavy: boolean): { hx: number; hy: number } {
     const gy = Math.abs(this.map.gravity.y);
     if (gy < 1e-6) {
@@ -599,14 +599,10 @@ export class BonkEngine {
     }
     const lightMass = DISC_DENSITY * Math.PI * PLAYER_RADIUS * PLAYER_RADIUS;
     const lightWeight = lightMass * gy;
-    const hx =
-      lightWeight *
-      (heavy ? HEAVY_HORIZONTAL_THRUST_VS_WEIGHT : HORIZONTAL_THRUST_VS_WEIGHT);
-    const hy =
-      lightWeight *
-      (heavy ? HEAVY_VERTICAL_THRUST_VS_WEIGHT : VERTICAL_THRUST_VS_WEIGHT);
+    const ratio = heavy ? HEAVY_THRUST_VS_LIGHT_WEIGHT : THRUST_VS_WEIGHT;
+    const f = lightWeight * ratio;
     const scale = this.mode === "football" ? 1.25 : 1;
-    return { hx: hx * scale, hy: hy * scale };
+    return { hx: f * scale, hy: f * scale };
   }
 
   private applyPlayerControl(p: EnginePlayer, dt: number) {
@@ -699,13 +695,8 @@ export class BonkEngine {
     if (grounded && p.pendingHop == null) p.impactVy = 0;
     p.wasGrounded = grounded;
     p.prevUp = input.up;
-
-    // Soft-cap horizontal only — leave vy alone for jump/bounce/freefall.
-    const maxSpeedX = heavy ? HEAVY_MAX_SPEED_X : MAX_SPEED_X;
-    const v = p.body.velocity;
-    if (Math.abs(v.x) > maxSpeedX) {
-      p.body.setVelocity(Math.sign(v.x) * maxSpeedX, v.y);
-    }
+    // No horizontal speed cap — tutorial / wiki momentum: velocity only
+    // changes via F/m thrusters and collisions (soft-caps killed coasts).
   }
 
   /** True when the disc is sitting on / grazing a solid platform. */
@@ -728,8 +719,8 @@ export class BonkEngine {
 
   /**
    * Continuous directional thrusters (Box2D ApplyForceToCenter).
-   * Horizontal and vertical use separate magnitudes so strafe stays snappy
-   * without Up cancelling gravity into a float.
+   * Matches tutorial: same magnitude on every arrow; net vertical is
+   * Fy - weight inside the integrator (we apply Fy, world applies gravity).
    */
   private applyThrusterForce(
     p: EnginePlayer,

@@ -21,11 +21,11 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 
 ## 3) The solution in this clone
 - [ ] Physics engine is **Planck.js** (Box2D), not Matter.js.
-- [ ] `applyForceToCenter` thrusters on Left/Right/Up/Down every frame.
-- [ ] Tuned to **OSU bonk_v6 tutorial wall-clock feel**: mass **3**, radius **25**, map gravity ≈ **420** (tutorial `dt=0.1` at 60fps is ~6× time-accelerated — raw client `g=20` felt sluggish in real-time).
-- [ ] **Horizontal** thruster ≈ **0.82×** weight (snappy strafe); **vertical** ≈ **0.32×** (Up only softens falls — near-1.0 vertical thrust was the float hang).
-- [ ] Grounded hop after `world.step` + clear stale contacts; `Settings.maxTranslation` raised (pixel worlds need this — default `2` clamped `|v|` to **120** at 60Hz and crushed jumps).
-- [ ] Heavy = **2× density**; weaker thruster vs light weight.
+- [ ] `applyForceToCenter` thrusters on Left/Right/Up/Down every frame — **same |F|** on every axis like the tutorial (`Fx/Fy = ±15`, `Fnety = Fy - mass·g`).
+- [ ] Tutorial ratios: mass **3**, radius **25**, thrust/weight = **15/(3·9.8)≈0.51**, map gravity ≈ **360** (tutorial `dt=0.1` @ 60fps ≈ 6× time — raw client `g=20` feels sluggish in real-time).
+- [ ] **Momentum**: no horizontal speed soft-cap; linearDamping **0.01**; restitution **~0.94** (tutorial floor does `vy = -vy`). Soft-caps / heavy air drag were killing coasts and knockback.
+- [ ] Grounded hop after `world.step` + clear stale contacts (Box2D resting contacts won’t start a bounce alone); `Settings.maxTranslation` raised for pixel speeds.
+- [ ] Heavy = **2× density** (wiki: more bash momentum, much less maneuverable).
 - [ ] Off a platform edge → real freefall past `killY` → elimination.
 - [ ] Snapshots carry **Box2D** velocities (needed for knockback online).
 - [ ] `PhysBody` adapts Planck bodies for renderer / tests.

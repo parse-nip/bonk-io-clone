@@ -205,6 +205,26 @@ for (let i = 0; i < 180; i++) {
 }
 const fellOff = fellPastFloor && maxFallY > 400;
 
+// Coast / momentum in air: release thruster — velocity should persist
+// (tutorial has no speed cap / no air drag). Soft-caps used to kill this.
+// Stay well above the floor so platform friction isn't the scrubber.
+const coast = makeEngine("flat");
+settle(coast);
+const coastP = coast.players[0];
+coastP.body.setPosition(200, 80);
+coastP.body.setVelocity(90, 0);
+const coastVx = coastP.body.velocity.x;
+for (let i = 0; i < 20; i++) {
+  coast.setInput("p1", emptyInput());
+  coast.update(1 / 60);
+}
+const coastVxAfter = coastP.body.velocity.x;
+const stillAirborne = coastP.body.position.y + PLAYER_RADIUS < FLAT_FLOOR_TOP - 8;
+const coasts =
+  stillAirborne &&
+  coastVxAfter > coastVx * 0.9 &&
+  coastVxAfter > 70;
+
 // Collision momentum.
 function makeTwoPlayer() {
   const eng = new BonkEngine("classic", "flat", 3);
@@ -286,6 +306,7 @@ const result = {
     airDx < -30 &&
     fellOff &&
     bGotHit &&
+    coasts &&
     heavySlower &&
     heavyMassOk &&
     lightMassOk &&
@@ -309,6 +330,9 @@ const result = {
   maxFallY: +maxFallY.toFixed(1),
   fallAlive: fallP.alive,
   bGotHit,
+  coasts,
+  coastVx: +coastVx.toFixed(1),
+  coastVxAfter: +coastVxAfter.toFixed(1),
   lightDx: +lightDx.toFixed(1),
   heavyDx: +heavyDx.toFixed(1),
   heavySlower,
