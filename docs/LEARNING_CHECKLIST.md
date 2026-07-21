@@ -15,7 +15,7 @@ Use this to track understanding. Restate each item in your own words before mark
 
 ## 2) The solution — how we cloned it, decisions, edge cases
 
-- [ ] Why Matter.js instead of shipping Box2D WASM?
+- [ ] Why Planck.js (Box2D) instead of Matter.js for a bonk clone?
 - [ ] How does heavy mode work in our engine? (mass ↑, accel ↓)
 - [ ] How do we detect elimination? (bounds / death fixtures)
 - [ ] How do rounds and match wins work?

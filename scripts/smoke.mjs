@@ -1,52 +1,86 @@
 /**
- * Headless smoke: spin Classic for a few seconds with bot inputs.
+ * Standalone Box2D (Planck) smoke: rotating platform + two thruster discs.
  */
-import Matter from "matter-js";
+import { World, Vec2, Circle, Box, RevoluteJoint } from "planck";
 
-const PLAYER_RADIUS = 18;
+const PLAYER_RADIUS = 12;
+const DISC_DENSITY = 0.001337;
 
-const engine = Matter.Engine.create({
-  gravity: { x: 0, y: 1.15, scale: 0.001 },
+const world = new World({ gravity: new Vec2(0, 20) });
+const ground = world.createBody({ type: "static", position: new Vec2(0, 0) });
+
+const platform = world.createBody({
+  type: "dynamic",
+  position: new Vec2(390, 300),
+  angularDamping: 0.08,
 });
-const platform = Matter.Bodies.rectangle(390, 300, 280, 48, {
-  isStatic: false,
+platform.createFixture({
+  shape: new Box(140, 24),
+  density: 0.3,
   friction: 0.45,
   restitution: 0.55,
 });
-const pivot = Matter.Constraint.create({
-  pointA: { x: 390, y: 300 },
-  bodyB: platform,
-  stiffness: 1,
-  length: 0,
-});
-const p1 = Matter.Bodies.circle(300, 180, PLAYER_RADIUS, {
-  restitution: 0.55,
-  friction: 0.35,
-  density: 0.002,
-});
-const p2 = Matter.Bodies.circle(480, 180, PLAYER_RADIUS, {
-  restitution: 0.55,
-  friction: 0.35,
-  density: 0.002,
-});
-Matter.World.add(engine.world, [platform, pivot, p1, p2]);
+world.createJoint(
+  new RevoluteJoint({}, ground, platform, new Vec2(390, 300)),
+);
 
-let fell = 0;
-for (let i = 0; i < 300; i++) {
-  Matter.Body.applyForce(p1, p1.position, { x: 0.0012, y: 0 });
-  Matter.Body.applyForce(p2, p2.position, { x: -0.0012, y: 0 });
-  if (i % 40 < 10) Matter.Body.setMass(p1, 2.35);
-  else Matter.Body.setMass(p1, 1);
-  Matter.Engine.update(engine, 1000 / 60);
-  if (p1.position.y > 560 || p2.position.y > 560) fell++;
+function makeDisc(x, y) {
+  const body = world.createBody({
+    type: "dynamic",
+    position: new Vec2(x, y),
+    bullet: true,
+    linearDamping: 0.01,
+    angularDamping: 3.4,
+  });
+  body.createFixture({
+    shape: new Circle(PLAYER_RADIUS),
+    density: DISC_DENSITY,
+    friction: 0.1,
+    restitution: 0.95,
+  });
+  return body;
 }
 
-console.log(
-  JSON.stringify({
-    ok: true,
-    p1: { x: +p1.position.x.toFixed(1), y: +p1.position.y.toFixed(1) },
-    p2: { x: +p2.position.x.toFixed(1), y: +p2.position.y.toFixed(1) },
-    platformAngle: +platform.angle.toFixed(3),
-    fellChecks: fell,
-  }),
-);
+const p1 = makeDisc(300, 180);
+const p2 = makeDisc(480, 180);
+
+const lightMass = DISC_DENSITY * Math.PI * PLAYER_RADIUS * PLAYER_RADIUS;
+const thrust = lightMass * 20 * 0.78;
+
+for (let i = 0; i < 240; i++) {
+  p1.applyForceToCenter(new Vec2(thrust, 0), true);
+  p2.applyForceToCenter(new Vec2(-thrust, 0), true);
+  if (i % 40 < 10) {
+    const md = { mass: 0, center: { x: 0, y: 0 }, I: 0 };
+    p1.getMassData(md);
+    md.mass = lightMass * 2;
+    md.I *= 2;
+    p1.setMassData(md);
+  } else {
+    p1.resetMassData();
+  }
+  world.step(1 / 60, 8, 3);
+  world.clearForces();
+}
+
+// Spin the hinged platform for a few steps to prove the revolute joint works.
+for (let i = 0; i < 30; i++) {
+  platform.applyTorque(2e6);
+  world.step(1 / 60, 8, 3);
+  world.clearForces();
+}
+
+const result = {
+  ok:
+    Number.isFinite(p1.getPosition().x) &&
+    Number.isFinite(p2.getPosition().x) &&
+    p1.getPosition().x > 300 &&
+    p2.getPosition().x < 480 &&
+    Math.abs(platform.getAngle()) > 0.005,
+  p1x: +p1.getPosition().x.toFixed(2),
+  p2x: +p2.getPosition().x.toFixed(2),
+  platformAngle: +platform.getAngle().toFixed(3),
+  p1mass: +p1.getMass().toFixed(3),
+};
+console.log(JSON.stringify(result));
+if (!result.ok) process.exit(1);

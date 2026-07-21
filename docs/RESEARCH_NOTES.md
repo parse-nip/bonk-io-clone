@@ -33,10 +33,14 @@ Research window: ~20 minutes before implementation (2026-07-19).
 - Map scale via `ppm` (pixels-per-meter style); default blank map `ppm: 12`
 - Platform defaults from map format: friction ~0.3, restitution ~0.8, density ~0.3
 
-### Clone mapping (Matter.js)
-- Pixel-ish map coords (~780×520) with Matter `gravity.scale = 0.001`
-- `applyForce` thrusters every frame; soft speed caps
+### Clone mapping (Planck.js / Box2D) — updated 2026-07-21
+- Map coords == Box2D meters (~780×520), same convention as bonk map units
+- World gravity from map def (builtins use `y: 18–22`, football `0`; client default `(0, 20)`)
+- Disc: density `0.001337`, restitution `0.95`, linearDamping `0.01`, angularDamping `3.4`, radius `12`
+- `applyForceToCenter` thrusters every frame; thruster ≈ 78% of light weight (no flight)
+- Heavy = 2× fixture density; soft speed caps kept high for freefall kills
 - Do **not** use OSU tutorial kinematic integrator in the live engine (invisible floor + dead knockback)
+- Confirmed live in obfuscated client `https://bonk.io/js/alpha2s.js`: `new …(new …(0,20))` world ctor + fixture `0.001337` / `0.95`
 
 ## Input bitfield (from DemystifyBonk)
 `Left=1, Right=2, Up=4, Down=8, Heavy=16, Special=32`
@@ -103,7 +107,7 @@ True bonk.io is server-authoritative WebSocket rooms. For this repo:
 - Same round/score flow as real game
 
 ## Design decisions for the clone
-- **Matter.js** instead of raw Box2D WASM: faster to ship, same circle/rect/joint primitives, tunable to feel close
+- **Planck.js (Box2D)** — same family as HTML5 bonk’s box2dweb / Box2DFlash stack; constants taken from the live client
 - **Vanilla TS + Vite + Canvas**: matches HTML5 bonk stack simplicity; no React cards/dashboard chrome
 - **Faithful brown/charcoal UI**, not a modern redesign
 - Scope: full Classic feel + Arrows + Grapple + skin color editor + basic map editor + lobbies; not full community map DB / ranked leagues

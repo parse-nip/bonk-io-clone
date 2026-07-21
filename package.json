@@ -19,10 +19,9 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "matter-js": "^0.20.0"
+    "planck": "^1.4.2"
   },
   "devDependencies": {
-    "@types/matter-js": "^0.19.8",
     "concurrently": "^9.2.0",
     "puppeteer-core": "^25.3.0",
     "typescript": "^5.8.3",

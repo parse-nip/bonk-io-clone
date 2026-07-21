@@ -19,7 +19,7 @@ Open the local URL Vite prints (default `http://localhost:5173`).
 
 - **UI shell** matching bonk.io: guest/login, brown menu buttons, top bar, logo wordmark, recorded-match style background
 - **Classic / Arrows / Death Arrows / Grapple / Football** modes
-- **Matter.js** physics with heavy mode (X / Space / Shift)
+- **Box2D (Planck.js)** physics with heavy mode (X / Space / Shift) — constants from the live bonk.io client
 - **Quick Play** + **Custom Game** lobbies with AI bots
 - **Local 2-player** (Arrows + WASD)
 - **Skin editor** (base colour, accent, eyes/mouth)
@@ -31,10 +31,10 @@ Open the local URL Vite prints (default `http://localhost:5173`).
 | Action | Player 1 | Player 2 |
 |--------|----------|----------|
 | Move | Arrow keys | WASD |
-| Jump | ↑ | W |
+| Thrust (all 4 dirs) | Arrows | WASD |
 | Heavy | X / Space / Shift | C |
 | Special (Arrows / Grapple) | Z / Y | V |
 
 ## Stack
 
-Vite · TypeScript · Canvas 2D · Matter.js
+Vite · TypeScript · Canvas 2D · Planck.js (Box2D)

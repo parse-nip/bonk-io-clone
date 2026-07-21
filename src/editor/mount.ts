@@ -1333,8 +1333,8 @@ function mapPropsHtml(doc: EditorDocument): string {
     <div class="ed-grid2">
       <div class="field"><label>Width</label><input id="mp-w" type="number" value="${doc.width}" /></div>
       <div class="field"><label>Height</label><input id="mp-h" type="number" value="${doc.height}" /></div>
-      <div class="field"><label>Gravity X</label><input id="mp-gx" type="number" step="0.05" value="${doc.gravityX}" /></div>
-      <div class="field"><label>Gravity Y</label><input id="mp-gy" type="number" step="0.05" value="${doc.gravityY}" /></div>
+      <div class="field"><label>Gravity X</label><input id="mp-gx" type="number" step="1" value="${doc.gravityX}" /></div>
+      <div class="field"><label>Gravity Y</label><input id="mp-gy" type="number" step="1" value="${doc.gravityY}" title="Box2D units; real bonk uses 20" /></div>
       <div class="field"><label>Kill Y</label><input id="mp-killy" type="number" value="${doc.killY}" /></div>
       <div class="field"><label>Kill pad</label><input id="mp-pad" type="number" value="${doc.killPadding}" /></div>
     </div>
@@ -1365,7 +1365,7 @@ function platformPropsHtml(p: EditorPlatform): string {
       }
       <div class="field"><label>Angle</label><input id="pp-angle" type="number" value="${p.angle}" /></div>
       <div class="field"><label>Bounciness</label><input id="pp-bounce" type="number" step="0.05" value="${p.restitution}" /></div>
-      <div class="field"><label>Density</label><input id="pp-dens" type="number" step="0.0001" value="${p.density}" /></div>
+      <div class="field"><label>Density</label><input id="pp-dens" type="number" step="0.01" value="${p.density}" title="Box2D density; blank maps ~0.3" /></div>
       <div class="field"><label>Friction</label><input id="pp-fric" type="number" step="0.05" value="${p.friction}" /></div>
     </div>
     <label class="ed-check"><input type="checkbox" id="pp-death" ${p.death ? "checked" : ""}/> Death</label>

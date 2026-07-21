@@ -8,7 +8,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "classic",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.15 },
+    gravity: { x: 0, y: 20 },
     killY: 560,
     killPadding: 80,
     shapes: [
@@ -23,7 +23,7 @@ export const BUILTIN_MAPS: MapDef[] = [
         angularDamping: 0.08,
         friction: 0.45,
         restitution: 0.55,
-        density: 0.001,
+        density: 0.3,
         static: false,
       },
     ],
@@ -45,7 +45,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "any",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.2 },
+    gravity: { x: 0, y: 20 },
     killY: 560,
     killPadding: 40,
     shapes: [
@@ -79,7 +79,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "any",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.2 },
+    gravity: { x: 0, y: 20 },
     killY: 560,
     killPadding: 50,
     shapes: [
@@ -135,7 +135,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "classic",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.25 },
+    gravity: { x: 0, y: 22 },
     killY: 560,
     killPadding: 60,
     shapes: [
@@ -169,7 +169,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "grapple",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.05 },
+    gravity: { x: 0, y: 18 },
     killY: 580,
     killPadding: 70,
     shapes: [
@@ -296,7 +296,7 @@ export const BUILTIN_MAPS: MapDef[] = [
     modeHint: "arrows",
     width: 780,
     height: 520,
-    gravity: { x: 0, y: 1.15 },
+    gravity: { x: 0, y: 20 },
     killY: 560,
     killPadding: 40,
     shapes: [
