@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "smoke": "node scripts/smoke.mjs",
-    "test:movement": "node scripts/movement.mjs"
+    "test:movement": "node scripts/movement.mjs",
+    "test:tutorial": "node scripts/tutorial-physics.mjs"
   },
   "dependencies": {
     "matter-js": "^0.20.0"

@@ -592,7 +592,7 @@ function makeSettings() {
       <input type="checkbox" id="mute" ${state.settings.mute ? "checked" : ""}/> Mute (placeholder)
     </label>
     <p style="font-size:13px;color:var(--muted);line-height:1.45;margin:12px 0">
-      Controls: Arrow keys or WASD move, Up/W jump, X/Shift heavy, Z/Y special.<br/>
+      Controls: Arrow keys or WASD thrust in all 4 directions, X/Shift heavy, Z/Y special.<br/>
       Player 2: WASD, C heavy, V special.
     </p>
     <div class="row">
@@ -667,7 +667,7 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
     <div class="scoreboard" id="scoreboard"></div>
     <div class="banner" id="banner"></div>
     <div class="chat" id="chat"></div>
-    <div class="controls-hint">Arrows/WASD move · X heavy · Z special · Esc menu</div>
+    <div class="controls-hint">Arrows/WASD thrust · X heavy · Z special · Esc menu</div>
     <button class="btn-brown small leave" id="leave">Leave</button>
   `;
   stage.appendChild(hud);
