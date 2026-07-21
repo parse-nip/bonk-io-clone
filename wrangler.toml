@@ -3,6 +3,9 @@ main = "worker/index.ts"
 compatibility_date = "2026-07-20"
 compatibility_flags = ["nodejs_compat"]
 
+# Same CF account as popped.dev
+account_id = "f176df02bc99b7cfffece89aa198d41e"
+
 workers_dev = true
 
 [assets]
@@ -22,6 +25,10 @@ class_name = "LobbyDirectory"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoom", "LobbyDirectory"]
+
+[[routes]]
+pattern = "bonk.popped.dev"
+custom_domain = true
 
 [observability]
 enabled = true
