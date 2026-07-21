@@ -6,3 +6,6 @@ dist
 .tmp-engine.mjs
 .tmp-tutorial-physics.mjs
 .tmp/
+.wrangler
+.dev.vars
+worker-configuration.d.ts
