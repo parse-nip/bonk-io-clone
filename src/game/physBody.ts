@@ -65,6 +65,11 @@ export class PhysBody {
     return this.raw.getType() === "static";
   }
 
+  /** Local-space polygon verts (empty for circles). Used for correct canvas draws. */
+  get localVertices(): { x: number; y: number }[] {
+    return this.localVerts.map((v) => ({ x: v.x, y: v.y }));
+  }
+
   get vertices(): { x: number; y: number }[] {
     const pos = this.raw.getPosition();
     const ang = this.raw.getAngle();

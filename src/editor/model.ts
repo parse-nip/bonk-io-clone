@@ -329,8 +329,9 @@ function platformToShape(p: EditorPlatform): ShapeDef {
     fricPlayers: p.fricPlayers,
     static: p.moveType === "stationary",
     rotate: p.moveType === "rotate" || undefined,
-    pivotX: p.moveType === "rotate" && p.pivotX ? p.pivotX : undefined,
-    pivotY: p.moveType === "rotate" && p.pivotY ? p.pivotY : undefined,
+    // Persist 0-offsets too when rotating so round-trips stay explicit.
+    pivotX: p.moveType === "rotate" ? p.pivotX : undefined,
+    pivotY: p.moveType === "rotate" ? p.pivotY : undefined,
     startSpeedX: p.startSpeedX || undefined,
     startSpeedY: p.startSpeedY || undefined,
     startSpin: p.startSpin || undefined,

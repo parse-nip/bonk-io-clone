@@ -26,10 +26,17 @@ export class GameRenderer {
 
   draw(engine: BonkEngine, localId: string) {
     const ctx = this.ctx;
-    const sx = this.w / engine.width;
-    const sy = this.h / engine.height;
+    // Uniform scale + letterbox so fullscreen does not stretch the arena.
+    const scale = Math.min(this.w / engine.width, this.h / engine.height);
+    const ox = (this.w - engine.width * scale) / 2;
+    const oy = (this.h - engine.height * scale) / 2;
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, this.w, this.h);
+
     ctx.save();
-    ctx.scale(sx, sy);
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
 
     // background field
     ctx.fillStyle = "#2c2c2c";
@@ -141,6 +148,19 @@ export class GameRenderer {
     rounded: boolean,
   ) {
     const ctx = this.ctx;
+    // Prefer local verts + body transform. Using world-space `vertices` here
+    // used to double-apply angle (translate/rotate AND already-rotated verts),
+    // which broke angled platforms and offset-pivot rotation visually.
+    const local = body.localVertices;
+    const verts =
+      local.length >= 3
+        ? local
+        : body.vertices.map((v) => ({
+            x: v.x - body.position.x,
+            y: v.y - body.position.y,
+          }));
+    if (verts.length < 3) return;
+
     ctx.save();
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
@@ -148,11 +168,10 @@ export class GameRenderer {
     ctx.strokeStyle = "rgba(0,0,0,0.35)";
     ctx.lineWidth = 2;
 
-    const verts = body.vertices;
     ctx.beginPath();
-    ctx.moveTo(verts[0].x - body.position.x, verts[0].y - body.position.y);
+    ctx.moveTo(verts[0].x, verts[0].y);
     for (let i = 1; i < verts.length; i++) {
-      ctx.lineTo(verts[i].x - body.position.x, verts[i].y - body.position.y);
+      ctx.lineTo(verts[i].x, verts[i].y);
     }
     ctx.closePath();
     if (rounded) {
@@ -161,9 +180,9 @@ export class GameRenderer {
       ctx.stroke();
       ctx.fillStyle = "rgba(255,255,255,0.12)";
       ctx.beginPath();
-      ctx.moveTo(verts[0].x - body.position.x, verts[0].y - body.position.y);
+      ctx.moveTo(verts[0].x, verts[0].y);
       for (let i = 1; i < Math.ceil(verts.length / 2); i++) {
-        ctx.lineTo(verts[i].x - body.position.x, verts[i].y - body.position.y);
+        ctx.lineTo(verts[i].x, verts[i].y);
       }
       ctx.closePath();
       ctx.fill();
