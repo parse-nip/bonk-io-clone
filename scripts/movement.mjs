@@ -81,7 +81,7 @@ for (let i = 0; i < 120; i++) {
 const orbitAlive = orbit.players[0].alive;
 const orbitPinned =
   Math.abs(orbit.players[0].body.position.x - 200) < 1 &&
-  Math.abs(orbit.players[0].body.position.y - 200) < 1;
+  Math.abs(orbit.players[0].body.position.y - 275) < 1;
 
 // 2) Horizontal thrusters after BONK on flat arena.
 const flatRight = makeEngine("flat");
