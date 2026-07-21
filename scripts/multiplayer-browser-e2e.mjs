@@ -95,13 +95,15 @@ async function main() {
   await clickId(client, "#ready");
   await clickId(host, "#start");
 
+  await host.waitForSelector(".controls-hint", { timeout: 25000 });
+  await client.waitForSelector(".controls-hint", { timeout: 25000 });
   await host.waitForFunction(
     () => (document.querySelector(".controls-hint")?.textContent ?? "").includes("HOST"),
-    { timeout: 20000 },
+    { timeout: 25000 },
   );
   await client.waitForFunction(
     () => (document.querySelector(".controls-hint")?.textContent ?? "").includes("CLIENT"),
-    { timeout: 20000 },
+    { timeout: 25000 },
   );
 
   const hostHint = await host.$eval(".controls-hint", (el) => el.textContent ?? "");

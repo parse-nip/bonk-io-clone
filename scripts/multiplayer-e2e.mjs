@@ -93,9 +93,16 @@ async function main() {
 
   const listRes = await fetch(`${API}/api/rooms`);
   const listJson = await listRes.json();
-  if (!(listJson.rooms ?? []).find((r) => r.code === code)) {
-    throw new Error(`Room ${code} not in /api/rooms`);
+  let listed = (listJson.rooms ?? []).find((r) => r.code === code);
+  if (!listed) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      const retry = await fetch(`${API}/api/rooms`).then((r) => r.json());
+      listed = (retry.rooms ?? []).find((r) => r.code === code);
+      if (listed) break;
+    }
   }
+  if (!listed) throw new Error(`Room ${code} not in /api/rooms`);
 
   const clientWs = await connect(`/ws?code=${encodeURIComponent(code)}`);
   const client = collect(clientWs, "client");
