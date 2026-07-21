@@ -34,6 +34,6 @@ Use this to verify you understand why movement was wrong and what 1:1 means here
 
 ## Quiz yourself
 1. Why did `state.x > 0 && state.x < width` prevent falling off Flat Arena?
-2. With Matter gravity `y: 1.2` and `scale: 0.001`, what weight does mass `1` feel? Why is `MOVE_FORCE ≈ 0.00138`?
+2. With Matter gravity `y: 1.2` and `scale: 0.001`, what weight does mass `1` feel? Why must thruster stay **below** that?
 3. Why must snapshots send body velocity instead of zeros after a kinematic step?
 4. What Box2D gravity vector does the real HTML5 client hard-code?
