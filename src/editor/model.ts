@@ -18,6 +18,9 @@ export interface EditorPlatform {
   color: string;
   vertices: { x: number; y: number }[];
   moveType: MoveType;
+  /** Local-space offset of the rotate pivot from the platform center. */
+  pivotX: number;
+  pivotY: number;
   death: boolean;
   noPhysics: boolean;
   density: number;
@@ -109,6 +112,8 @@ export function defaultPlatform(
     color,
     vertices: [],
     moveType: "stationary",
+    pivotX: 0,
+    pivotY: 0,
     death: false,
     noPhysics: false,
     density: 0.002,
@@ -253,6 +258,8 @@ function shapeToPlatform(s: ShapeDef, index: number): EditorPlatform {
     color: s.color,
     vertices: s.vertices ? s.vertices.map((v) => ({ ...v })) : [],
     moveType,
+    pivotX: s.pivotX ?? 0,
+    pivotY: s.pivotY ?? 0,
     death: !!s.death,
     noPhysics: !!s.noPhysics,
     density: s.density ?? 0.002,
@@ -322,6 +329,8 @@ function platformToShape(p: EditorPlatform): ShapeDef {
     fricPlayers: p.fricPlayers,
     static: p.moveType === "stationary",
     rotate: p.moveType === "rotate" || undefined,
+    pivotX: p.moveType === "rotate" && p.pivotX ? p.pivotX : undefined,
+    pivotY: p.moveType === "rotate" && p.pivotY ? p.pivotY : undefined,
     startSpeedX: p.startSpeedX || undefined,
     startSpeedY: p.startSpeedY || undefined,
     startSpin: p.startSpin || undefined,

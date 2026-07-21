@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "smoke": "node scripts/smoke.mjs",
     "test:movement": "node scripts/movement.mjs",
+    "test:editor": "node scripts/editor-bugs.mjs",
     "test:tutorial": "node scripts/tutorial-physics.mjs"
   },
   "dependencies": {

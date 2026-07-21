@@ -79,6 +79,8 @@ let menuBgEngine: BonkEngine | null = null;
 let menuBgRenderer: GameRenderer | null = null;
 let chatLines: string[] = [];
 let gameEscHandler: ((e: KeyboardEvent) => void) | null = null;
+/** Disposes the map editor (window listeners) when leaving the editor screen. */
+let editorDispose: (() => void) | null = null;
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);
@@ -90,6 +92,10 @@ function setScreen(screen: Screen) {
 }
 
 function render() {
+  if (editorDispose) {
+    editorDispose();
+    editorDispose = null;
+  }
   stopGameLoop(false);
   app.innerHTML = "";
   const stage = el("div", "stage");
@@ -568,7 +574,10 @@ function makeSkin() {
 function makeEditor() {
   const host = el("div", "editor-host");
   queueMicrotask(() => {
-    mountEditor(host, {
+    // Guard against a stale microtask if the screen changed before mount.
+    if (state.screen !== "editor" || !host.isConnected) return;
+    editorDispose?.();
+    editorDispose = mountEditor(host, {
       author: state.profile.name,
       onBack: () => setScreen("menu"),
       onPlaytest: (map: MapDef) => {
