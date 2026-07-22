@@ -28,9 +28,8 @@ export class GameRenderer {
 
   draw(engine: BonkEngine, localId: string) {
     const ctx = this.ctx;
-    // Bigger window ≠ bigger arena. Cap at 1:1 so players/platforms keep their
-    // native size; extra stage space is just surrounding playspace. Still
-    // scale *down* on small screens so the map fits.
+    // World is expanded to the viewport at match start (same-sized props,
+    // more empty fight room). Scale down only if the window shrinks mid-match.
     const scale = Math.min(
       1,
       this.w / engine.width,
@@ -39,7 +38,6 @@ export class GameRenderer {
     const ox = (this.w - engine.width * scale) / 2;
     const oy = (this.h - engine.height * scale) / 2;
 
-    // Page surround (bigger playspace around the fixed-size arena).
     ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(0, 0, this.w, this.h);
 
@@ -51,7 +49,7 @@ export class GameRenderer {
     ctx.fillStyle = "#2c2c2c";
     ctx.fillRect(0, 0, engine.width, engine.height);
     ctx.strokeStyle = "#111";
-    ctx.lineWidth = 3 / scale;
+    ctx.lineWidth = 3 / Math.max(scale, 0.001);
     ctx.strokeRect(0.5, 0.5, engine.width - 1, engine.height - 1);
 
     // subtle vignette grid

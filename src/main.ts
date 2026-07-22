@@ -917,9 +917,15 @@ function mountGame(stage: HTMLElement, canvas: HTMLCanvasElement) {
   const isHost = online && state.isHost;
   const isClient = online && !state.isHost;
 
-  engine = new BonkEngine(state.room.mode, state.room.mapId, state.room.roundsToWin);
-  engine.addPlayers(state.lobbyPlayers);
+  // Size the canvas first, then expand the authored map to that playspace so
+  // players/platforms stay classic-sized while the fight area fills the window.
   renderer = new GameRenderer(canvas);
+  renderer.resize();
+  engine = new BonkEngine(state.room.mode, state.room.mapId, state.room.roundsToWin, {
+    w: renderer.w,
+    h: renderer.h,
+  });
+  engine.addPlayers(state.lobbyPlayers);
   input.bind(state.localTwoPlayer && !online);
   snapSendAcc = 0;
 
@@ -1119,7 +1125,12 @@ function stopGameLoop(destroyEngine: boolean) {
 
 function startMenuBackground(canvas: HTMLCanvasElement) {
   stopMenuBackground();
-  menuBgEngine = new BonkEngine("classic", "classic", 99);
+  menuBgRenderer = new GameRenderer(canvas);
+  menuBgRenderer.resize();
+  menuBgEngine = new BonkEngine("classic", "classic", 99, {
+    w: menuBgRenderer.w,
+    h: menuBgRenderer.h,
+  });
   menuBgEngine.addPlayers([
     {
       id: "a",
@@ -1152,7 +1163,6 @@ function startMenuBackground(canvas: HTMLCanvasElement) {
       ready: true,
     },
   ]);
-  menuBgRenderer = new GameRenderer(canvas);
   menuBgEngine.startRound();
   // skip countdown
   menuBgEngine.countdown = 0;

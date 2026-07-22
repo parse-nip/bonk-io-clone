@@ -583,8 +583,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     bindStr("mp-name", (v) => (doc.name = v));
     bindStr("mp-author", (v) => (doc.author = v));
     bindStr("mp-mode", (v) => (doc.modeHint = v as EditorDocument["modeHint"]));
-    bindNum("mp-w", (v) => (doc.width = clamp(v, 400, 1600)));
-    bindNum("mp-h", (v) => (doc.height = clamp(v, 300, 1200)));
+    bindNum("mp-w", (v) => (doc.width = clamp(v, 400, 2400)));
+    bindNum("mp-h", (v) => (doc.height = clamp(v, 300, 1600)));
     bindNum("mp-gx", (v) => (doc.gravityX = v));
     bindNum("mp-gy", (v) => (doc.gravityY = v));
     bindNum("mp-killy", (v) => (doc.killY = v));
@@ -596,9 +596,9 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
         doc.height = 400;
         doc.killY = 440;
       } else if (v === "big") {
-        doc.width = 980;
-        doc.height = 640;
-        doc.killY = 700;
+        doc.width = 1280;
+        doc.height = 720;
+        doc.killY = 780;
       } else {
         doc.width = 780;
         doc.height = 520;

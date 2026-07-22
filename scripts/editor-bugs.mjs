@@ -20,7 +20,7 @@ const entry = path.join(repo, ".tmp-editor-entry.ts");
 
 writeFileSync(
   entry,
-  `export { BonkEngine } from "./src/game/engine";\nexport { registerCustomMaps } from "./src/game/maps";\n`,
+  `export { BonkEngine } from "./src/game/engine";\nexport { registerCustomMaps, expandMapToViewport, getMap } from "./src/game/maps";\n`,
 );
 
 esbuild.buildSync({
@@ -46,7 +46,7 @@ const {
   defaultPlatform,
 } = await import(pathToFileURL(modelOut).href);
 
-const { BonkEngine, registerCustomMaps } = await import(
+const { BonkEngine, registerCustomMaps, expandMapToViewport, getMap } = await import(
   pathToFileURL(engineOut).href,
 );
 
@@ -210,6 +210,33 @@ assert(
   maxVertErr < 0.01,
   `err=${maxVertErr}`,
 );
+
+// 3d) Viewport expand keeps prop sizes, grows bounds, recenters layout
+const classic = getMap("classic");
+const plat0 = classic.shapes[0];
+const expanded = expandMapToViewport(classic, 1600, 1000);
+assert("expand-grows-width", expanded.width === 1600);
+assert("expand-grows-height", expanded.height === 1000);
+assert(
+  "expand-keeps-platform-size",
+  expanded.shapes[0].w === plat0.w && expanded.shapes[0].h === plat0.h,
+);
+assert(
+  "expand-centers-platform",
+  Math.abs(expanded.shapes[0].x - (plat0.x + (1600 - classic.width) / 2)) < 0.01 &&
+    Math.abs(expanded.shapes[0].y - (plat0.y + (1000 - classic.height) / 2)) < 0.01,
+  `got ${expanded.shapes[0].x},${expanded.shapes[0].y}`,
+);
+assert(
+  "expand-killY-tracks-height",
+  expanded.killY === 1000 + (classic.killY - classic.height),
+);
+const noOp = expandMapToViewport(classic, 100, 100);
+assert("expand-noop-when-smaller", noOp.width === classic.width && noOp.height === classic.height);
+
+const bigEngine = new BonkEngine("classic", "classic", 3, { w: 1400, h: 900 });
+assert("engine-playspace-width", bigEngine.width === 1400);
+assert("engine-playspace-height", bigEngine.height === 900);
 
 // 4) Simulate listener leak vs dispose (the re-enter duplication root cause)
 let live = 0;
