@@ -169,10 +169,12 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     view.grid ? Math.round(v / view.snap) * view.snap : Math.round(v);
 
   function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
+    // clientWidth/Height = content box (excludes border). Using
+    // getBoundingClientRect() overshoots by the 2px border and the browser
+    // then soft-scales the bitmap down into the content box.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const nextW = Math.max(1, Math.floor(rect.width));
-    const nextH = Math.max(1, Math.floor(rect.height));
+    const nextW = Math.max(1, canvas.clientWidth || 1);
+    const nextH = Math.max(1, canvas.clientHeight || 1);
     const bw = Math.max(1, Math.floor(nextW * dpr));
     const bh = Math.max(1, Math.floor(nextH * dpr));
     cssW = nextW;
@@ -186,9 +188,9 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
 
   function screenToWorld(clientX: number, clientY: number) {
     const rect = canvas.getBoundingClientRect();
-    // Map pointer → CSS pixels (matches setTransform(dpr) drawing space).
-    const sx = rect.width ? ((clientX - rect.left) / rect.width) * cssW : 0;
-    const sy = rect.height ? ((clientY - rect.top) / rect.height) * cssH : 0;
+    // Subtract border (clientLeft/Top) so coords match the content-box bitmap.
+    const sx = clientX - rect.left - canvas.clientLeft;
+    const sy = clientY - rect.top - canvas.clientTop;
     const fit = fitScale();
     const scale = fit * view.zoom;
     const ox = (cssW - doc.width * scale) / 2 + view.panX;

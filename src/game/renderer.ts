@@ -15,13 +15,15 @@ export class GameRenderer {
   }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
+    // Prefer content-box size so the bitmap isn't soft-scaled by borders.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.floor(rect.width * dpr);
-    this.canvas.height = Math.floor(rect.height * dpr);
+    const w = Math.max(1, this.canvas.clientWidth || 1);
+    const h = Math.max(1, this.canvas.clientHeight || 1);
+    this.canvas.width = Math.floor(w * dpr);
+    this.canvas.height = Math.floor(h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.w = rect.width;
-    this.h = rect.height;
+    this.w = w;
+    this.h = h;
   }
 
   draw(engine: BonkEngine, localId: string) {
