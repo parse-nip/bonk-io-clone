@@ -200,7 +200,9 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   }
 
   function fitScale() {
-    return Math.min(cssW / doc.width, cssH / doc.height) * 0.92;
+    // Cap at 1:1 — fullscreen should add margin around the map, not blow it up.
+    // Zoom buttons / wheel still let you inspect past native size.
+    return Math.min(1, Math.min(cssW / doc.width, cssH / doc.height) * 0.92);
   }
 
   /** World-space hit radius that stays ~constant on screen across zoom/fit. */

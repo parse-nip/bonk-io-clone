@@ -28,14 +28,19 @@ export class GameRenderer {
 
   draw(engine: BonkEngine, localId: string) {
     const ctx = this.ctx;
-    // Uniform scale + letterbox: stretching X/Y independently turns discs into
-    // ellipses and makes fullscreen look soft/warped. Fill bars with the field
-    // color so the stage still feels full-bleed.
-    const scale = Math.min(this.w / engine.width, this.h / engine.height);
+    // Bigger window ≠ bigger arena. Cap at 1:1 so players/platforms keep their
+    // native size; extra stage space is just surrounding playspace. Still
+    // scale *down* on small screens so the map fits.
+    const scale = Math.min(
+      1,
+      this.w / engine.width,
+      this.h / engine.height,
+    );
     const ox = (this.w - engine.width * scale) / 2;
     const oy = (this.h - engine.height * scale) / 2;
 
-    ctx.fillStyle = "#2c2c2c";
+    // Page surround (bigger playspace around the fixed-size arena).
+    ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(0, 0, this.w, this.h);
 
     ctx.save();
@@ -45,6 +50,9 @@ export class GameRenderer {
     // background field
     ctx.fillStyle = "#2c2c2c";
     ctx.fillRect(0, 0, engine.width, engine.height);
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 3 / scale;
+    ctx.strokeRect(0.5, 0.5, engine.width - 1, engine.height - 1);
 
     // subtle vignette grid
     ctx.strokeStyle = "rgba(255,255,255,0.03)";

@@ -18,10 +18,12 @@
   --green: #2ecc71;
   --yellow: #f1c40f;
   --shadow: rgba(0, 0, 0, 0.45);
-  /* Logical map size stays 780×520; stage fills the window and the
-     renderer scales the playfield into the available canvas. */
+  /* Stage fills the window (bigger playspace/chrome). Logical arena stays
+     780×520 at ≤1:1 — we do not blow gameplay up to fill the screen. */
   --viewport-w: 100vw;
   --viewport-h: 100vh;
+  --arena-w: 780px;
+  --arena-h: 520px;
 }
 
 * {
@@ -57,7 +59,7 @@ body {
   max-width: 100vw;
   max-height: 100vh;
   position: relative;
-  background: var(--bg-field);
+  background: var(--bg-page);
   border: none;
   box-shadow: none;
   overflow: hidden;
