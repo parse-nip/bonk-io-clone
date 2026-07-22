@@ -659,6 +659,9 @@ body {
   border: 2px solid #111;
   border-radius: 3px;
   cursor: crosshair;
+  /* Bitmap is resized to CSS size × DPR in mount.ts — don't let the browser
+     soft-scale a tiny default buffer across the fullscreen panel. */
+  display: block;
 }
 
 .editor-preview-foot {
