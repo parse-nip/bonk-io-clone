@@ -172,7 +172,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     // clientWidth/Height = content box (excludes border). Using
     // getBoundingClientRect() overshoots by the 2px border and the browser
     // then soft-scales the bitmap down into the content box.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Never undersample (dpr < 1 from browser zoom-out soft-scales back up).
+    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
     const nextW = Math.max(1, canvas.clientWidth || 1);
     const nextH = Math.max(1, canvas.clientHeight || 1);
     const bw = Math.max(1, Math.floor(nextW * dpr));

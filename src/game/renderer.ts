@@ -16,7 +16,7 @@ export class GameRenderer {
 
   resize() {
     // Prefer content-box size so the bitmap isn't soft-scaled by borders.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
     const w = Math.max(1, this.canvas.clientWidth || 1);
     const h = Math.max(1, this.canvas.clientHeight || 1);
     this.canvas.width = Math.floor(w * dpr);

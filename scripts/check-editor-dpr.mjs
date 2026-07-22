@@ -38,7 +38,7 @@ const info = await page.evaluate(() => {
   const canvas = document.querySelector("#ed-canvas");
   if (!canvas) return { ok: false, error: "no canvas" };
   const rect = canvas.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
   return {
     clientW: canvas.clientWidth,
     clientH: canvas.clientHeight,
