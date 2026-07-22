@@ -15,7 +15,7 @@ import type {
   Skin,
   SpawnDef,
 } from "../types";
-import { getMap } from "./maps";
+import { expandMapToViewport, getMap } from "./maps";
 import type { GameSnapshot } from "../../shared/protocol";
 import {
   PhysBody,
@@ -148,9 +148,19 @@ export class BonkEngine {
   /** Static anchor body for revolute pivots / grapples. */
   private ground: PhysBody;
 
-  constructor(mode: GameMode, mapId: string, roundsToWin = 3) {
+  constructor(
+    mode: GameMode,
+    mapId: string,
+    roundsToWin = 3,
+    /** When set, grow the authored map to this CSS-pixel playspace (1:1). */
+    playspace?: { w: number; h: number },
+  ) {
     this.mode = mode;
-    this.map = getMap(mapId);
+    const base = getMap(mapId);
+    this.map =
+      playspace && playspace.w > 0 && playspace.h > 0
+        ? expandMapToViewport(base, playspace.w, playspace.h)
+        : base;
     this.roundsToWin = roundsToWin;
     this.width = this.map.width;
     this.height = this.map.height;

@@ -362,6 +362,50 @@ export function getMap(id: string): MapDef {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
 }
 
+/**
+ * Grow an authored map to fill a larger viewport without resizing props.
+ * Platforms/spawns keep their pixel sizes; the whole layout is centered in the
+ * extra space so kill bounds open up — a bigger fight area at 1:1 scale.
+ */
+export function expandMapToViewport(
+  map: MapDef,
+  viewW: number,
+  viewH: number,
+): MapDef {
+  const tw = Math.max(map.width, Math.max(1, Math.floor(viewW)));
+  const th = Math.max(map.height, Math.max(1, Math.floor(viewH)));
+  if (tw === map.width && th === map.height) return map;
+
+  const dx = (tw - map.width) / 2;
+  const dy = (th - map.height) / 2;
+  // Preserve how far below the authored floor killY sat.
+  const killBelow = map.killY - map.height;
+
+  return {
+    ...map,
+    width: tw,
+    height: th,
+    killY: th + killBelow,
+    shapes: map.shapes.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
+    spawns: map.spawns.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
+    capZones: map.capZones?.map((z) => ({ ...z, x: z.x + dx, y: z.y + dy })),
+    football: map.football
+      ? {
+          ball: {
+            ...map.football.ball,
+            x: map.football.ball.x + dx,
+            y: map.football.ball.y + dy,
+          },
+          goals: map.football.goals.map((g) => ({
+            ...g,
+            x: g.x + dx,
+            y: g.y + dy,
+          })),
+        }
+      : undefined,
+  };
+}
+
 export function mapsForMode(mode: string): MapDef[] {
   return MAPS.filter((m) => m.modeHint === mode || m.modeHint === "any");
 }

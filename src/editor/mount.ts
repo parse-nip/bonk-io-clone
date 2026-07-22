@@ -101,7 +101,7 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       <button class="ed-icon" id="tool-spawn" title="Spawn">●</button>
       <button class="ed-icon" id="tool-cap" title="Capture Zone">◎</button>
     </div>
-    <canvas id="ed-canvas" width="420" height="280"></canvas>
+    <canvas id="ed-canvas"></canvas>
     <div class="editor-preview-foot">
       <div class="editor-info" id="ed-info"></div>
       <div class="editor-finalize">
@@ -120,6 +120,10 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
 
   const canvas = preview.querySelector<HTMLCanvasElement>("#ed-canvas")!;
   const infoEl = preview.querySelector<HTMLElement>("#ed-info")!;
+  /** CSS-pixel drawing size (backing store is cssW/H × devicePixelRatio). */
+  let cssW = 420;
+  let cssH = 280;
+  let canvasDpr = 1;
 
   const pushHistory = () => {
     history.splice(histIndex + 1);
@@ -164,19 +168,46 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   const snap = (v: number) =>
     view.grid ? Math.round(v / view.snap) * view.snap : Math.round(v);
 
+  function resizeCanvas() {
+    // clientWidth/Height = content box (excludes border). Using
+    // getBoundingClientRect() overshoots by the 2px border and the browser
+    // then soft-scales the bitmap down into the content box.
+    // Never undersample (dpr < 1 from browser zoom-out soft-scales back up).
+    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    const nextW = Math.max(1, canvas.clientWidth || 1);
+    const nextH = Math.max(1, canvas.clientHeight || 1);
+    const bw = Math.max(1, Math.floor(nextW * dpr));
+    const bh = Math.max(1, Math.floor(nextH * dpr));
+    cssW = nextW;
+    cssH = nextH;
+    canvasDpr = dpr;
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+  }
+
   function screenToWorld(clientX: number, clientY: number) {
     const rect = canvas.getBoundingClientRect();
-    const sx = ((clientX - rect.left) / rect.width) * canvas.width;
-    const sy = ((clientY - rect.top) / rect.height) * canvas.height;
+    // Subtract border (clientLeft/Top) so coords match the content-box bitmap.
+    const sx = clientX - rect.left - canvas.clientLeft;
+    const sy = clientY - rect.top - canvas.clientTop;
     const fit = fitScale();
-    const ox = (canvas.width - doc.width * fit * view.zoom) / 2 + view.panX;
-    const oy = (canvas.height - doc.height * fit * view.zoom) / 2 + view.panY;
     const scale = fit * view.zoom;
+    const ox = (cssW - doc.width * scale) / 2 + view.panX;
+    const oy = (cssH - doc.height * scale) / 2 + view.panY;
     return { x: (sx - ox) / scale, y: (sy - oy) / scale };
   }
 
   function fitScale() {
-    return Math.min(canvas.width / doc.width, canvas.height / doc.height) * 0.92;
+    // Cap at 1:1 — fullscreen should add margin around the map, not blow it up.
+    // Zoom buttons / wheel still let you inspect past native size.
+    return Math.min(1, Math.min(cssW / doc.width, cssH / doc.height) * 0.92);
+  }
+
+  /** World-space hit radius that stays ~constant on screen across zoom/fit. */
+  function screenHitWorld(px = 12) {
+    return Math.max(8, px / Math.max(0.001, fitScale() * view.zoom));
   }
 
   function platformPivotWorld(p: EditorPlatform) {
@@ -201,7 +232,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   function hitPivot(p: EditorPlatform, wx: number, wy: number): boolean {
     if (p.moveType !== "rotate") return false;
     const piv = platformPivotWorld(p);
-    return (wx - piv.x) ** 2 + (wy - piv.y) ** 2 <= 12 ** 2;
+    const r = screenHitWorld(14);
+    return (wx - piv.x) ** 2 + (wy - piv.y) ** 2 <= r * r;
   }
 
   function hitTest(wx: number, wy: number): EditorSelection {
@@ -221,7 +253,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     }
     for (let i = doc.spawns.length - 1; i >= 0; i--) {
       const s = doc.spawns[i];
-      if ((wx - s.x) ** 2 + (wy - s.y) ** 2 <= 14 ** 2) {
+      const spawnR = Math.max(14, screenHitWorld(12));
+      if ((wx - s.x) ** 2 + (wy - s.y) ** 2 <= spawnR * spawnR) {
         return { kind: "spawn", id: s.id };
       }
     }
@@ -550,8 +583,8 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     bindStr("mp-name", (v) => (doc.name = v));
     bindStr("mp-author", (v) => (doc.author = v));
     bindStr("mp-mode", (v) => (doc.modeHint = v as EditorDocument["modeHint"]));
-    bindNum("mp-w", (v) => (doc.width = clamp(v, 400, 1600)));
-    bindNum("mp-h", (v) => (doc.height = clamp(v, 300, 1200)));
+    bindNum("mp-w", (v) => (doc.width = clamp(v, 400, 2400)));
+    bindNum("mp-h", (v) => (doc.height = clamp(v, 300, 1600)));
     bindNum("mp-gx", (v) => (doc.gravityX = v));
     bindNum("mp-gy", (v) => (doc.gravityY = v));
     bindNum("mp-killy", (v) => (doc.killY = v));
@@ -563,9 +596,9 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
         doc.height = 400;
         doc.killY = 440;
       } else if (v === "big") {
-        doc.width = 980;
-        doc.height = 640;
-        doc.killY = 700;
+        doc.width = 1280;
+        doc.height = 720;
+        doc.killY = 780;
       } else {
         doc.width = 780;
         doc.height = 520;
@@ -749,14 +782,17 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
   }
 
   function drawCanvas() {
+    resizeCanvas();
     const ctx = canvas.getContext("2d")!;
+    // Draw in CSS pixels; backing store is denser on HiDPI displays.
+    ctx.setTransform(canvasDpr, 0, 0, canvasDpr, 0, 0);
     ctx.fillStyle = "#2c2c2c";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, cssW, cssH);
 
     const fit = fitScale();
     const scale = fit * view.zoom;
-    const ox = (canvas.width - doc.width * scale) / 2 + view.panX;
-    const oy = (canvas.height - doc.height * scale) / 2 + view.panY;
+    const ox = (cssW - doc.width * scale) / 2 + view.panX;
+    const oy = (cssH - doc.height * scale) / 2 + view.panY;
 
     ctx.save();
     ctx.translate(ox, oy);
@@ -922,10 +958,12 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
       const rad = (-p.angle * Math.PI) / 180;
       const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
       const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+      const handleSlop = screenHitWorld(12);
       const nearHandle =
         p.type === "circle"
-          ? Math.abs(Math.hypot(lx, ly) - p.r) < 12
-          : Math.abs(lx - p.w / 2) < 12 && Math.abs(ly - p.h / 2) < 12;
+          ? Math.abs(Math.hypot(lx, ly) - p.r) < handleSlop
+          : Math.abs(lx - p.w / 2) < handleSlop &&
+            Math.abs(ly - p.h / 2) < handleSlop;
       if (nearHandle) {
         resizing = {
           id: p.id,
@@ -1290,12 +1328,24 @@ export function mountEditor(root: HTMLElement, cb: EditorCallbacks): () => void 
     });
   }
 
+  const onWinResize = () => drawCanvas();
+  window.addEventListener("resize", onWinResize);
+  const ro =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => drawCanvas())
+      : null;
+  ro?.observe(canvas);
+
+  // First paint after layout so the canvas isn't stuck at a tiny default size.
+  requestAnimationFrame(() => renderAll());
   renderAll();
 
   return () => {
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
     window.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", onWinResize);
+    ro?.disconnect();
     wrap.remove();
   };
 }

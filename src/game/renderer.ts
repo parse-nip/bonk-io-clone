@@ -15,27 +15,42 @@ export class GameRenderer {
   }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.floor(rect.width * dpr);
-    this.canvas.height = Math.floor(rect.height * dpr);
+    // Prefer content-box size so the bitmap isn't soft-scaled by borders.
+    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    const w = Math.max(1, this.canvas.clientWidth || 1);
+    const h = Math.max(1, this.canvas.clientHeight || 1);
+    this.canvas.width = Math.floor(w * dpr);
+    this.canvas.height = Math.floor(h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.w = rect.width;
-    this.h = rect.height;
+    this.w = w;
+    this.h = h;
   }
 
   draw(engine: BonkEngine, localId: string) {
     const ctx = this.ctx;
-    // Stretch the logical 780×520 world to the full canvas so the stage
-    // (now 100vw×100vh) is actually used edge-to-edge.
-    const sx = this.w / engine.width;
-    const sy = this.h / engine.height;
+    // World is expanded to the viewport at match start (same-sized props,
+    // more empty fight room). Scale down only if the window shrinks mid-match.
+    const scale = Math.min(
+      1,
+      this.w / engine.width,
+      this.h / engine.height,
+    );
+    const ox = (this.w - engine.width * scale) / 2;
+    const oy = (this.h - engine.height * scale) / 2;
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, this.w, this.h);
+
     ctx.save();
-    ctx.scale(sx, sy);
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
 
     // background field
     ctx.fillStyle = "#2c2c2c";
     ctx.fillRect(0, 0, engine.width, engine.height);
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 3 / Math.max(scale, 0.001);
+    ctx.strokeRect(0.5, 0.5, engine.width - 1, engine.height - 1);
 
     // subtle vignette grid
     ctx.strokeStyle = "rgba(255,255,255,0.03)";
